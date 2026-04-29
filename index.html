@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PEAT – Protein Engineering Agent Toolkit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #050a0e;
+      --surface: #0c1520;
+      --border: #1a2e40;
+      --accent: #00c8a0;
+      --accent2: #0080ff;
+      --text: #c8dce8;
+      --muted: #4a6478;
+      --mono: "IBM Plex Mono", monospace;
+      --sans: "Syne", sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 14px;
+      line-height: 1.7;
+      overflow-x: hidden;
+    }
+
+    /* ── noise overlay ── */
+    body::before {
+      content: "";
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── hero grid lines ── */
+    .grid-bg {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 60px 60px;
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    /* ── nav ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 48px;
+      background: rgba(5,10,14,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      font-family: var(--sans);
+      font-weight: 800;
+      font-size: 18px;
+      color: var(--accent);
+      letter-spacing: 0.05em;
+      text-decoration: none;
+    }
+
+    .nav-links { display: flex; gap: 32px; }
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--accent); }
+
+    /* ── hero ── */
+    .hero {
+      position: relative;
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center;
+      padding: 120px 24px 80px;
+      overflow: hidden;
+    }
+
+    .hero-glow {
+      position: absolute;
+      width: 600px; height: 600px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(0,200,160,0.12) 0%, transparent 70%);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .hero-tag {
+      display: inline-block;
+      background: rgba(0,200,160,0.1);
+      border: 1px solid rgba(0,200,160,0.3);
+      color: var(--accent);
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 6px 16px;
+      border-radius: 2px;
+      margin-bottom: 32px;
+      animation: fadeUp 0.6s ease both;
+    }
+
+    h1 {
+      font-family: var(--sans);
+      font-weight: 800;
+      font-size: clamp(40px, 7vw, 88px);
+      line-height: 1.0;
+      letter-spacing: -0.02em;
+      margin-bottom: 24px;
+      animation: fadeUp 0.6s 0.1s ease both;
+    }
+
+    h1 span { color: var(--accent); }
+
+    .hero-sub {
+      max-width: 580px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.8;
+      margin-bottom: 48px;
+      animation: fadeUp 0.6s 0.2s ease both;
+    }
+
+    .hero-actions {
+      display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;
+      animation: fadeUp 0.6s 0.3s ease both;
+    }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 28px;
+      font-family: var(--mono);
+      font-size: 13px;
+      letter-spacing: 0.05em;
+      text-decoration: none;
+      border-radius: 2px;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: var(--bg);
+      font-weight: 600;
+      border: 1px solid var(--accent);
+    }
+    .btn-primary:hover { background: #00e0b4; border-color: #00e0b4; transform: translateY(-1px); }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+
+    /* ── terminal demo ── */
+    .terminal-wrap {
+      margin-top: 72px;
+      width: 100%;
+      max-width: 720px;
+      animation: fadeUp 0.6s 0.4s ease both;
+    }
+
+    .terminal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      text-align: left;
+    }
+
+    .terminal-bar {
+      background: var(--border);
+      padding: 10px 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-r { background: #ff5f56; }
+    .dot-y { background: #ffbd2e; }
+    .dot-g { background: #27c93f; }
+
+    .terminal-body { padding: 20px 24px; font-size: 13px; line-height: 1.9; }
+    .t-prompt { color: var(--accent); }
+    .t-cmd { color: var(--text); }
+    .t-out { color: var(--muted); }
+    .t-val { color: var(--accent2); }
+    .t-ok { color: var(--accent); }
+    .t-cursor {
+      display: inline-block;
+      width: 8px; height: 14px;
+      background: var(--accent);
+      animation: blink 1s steps(1) infinite;
+      vertical-align: middle;
+      margin-left: 2px;
+    }
+
+    /* ── features ── */
+    section { position: relative; z-index: 1; }
+
+    .features {
+      padding: 100px 48px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-family: var(--sans);
+      font-weight: 700;
+      font-size: clamp(28px, 4vw, 48px);
+      margin-bottom: 60px;
+      color: #e8f4fc;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+    }
+
+    .feature-card {
+      background: var(--surface);
+      padding: 36px 32px;
+      transition: background 0.2s;
+    }
+    .feature-card:hover { background: #0f1e2d; }
+
+    .feature-icon {
+      font-size: 24px;
+      margin-bottom: 16px;
+    }
+
+    .feature-title {
+      font-family: var(--sans);
+      font-weight: 700;
+      font-size: 16px;
+      color: #e8f4fc;
+      margin-bottom: 10px;
+    }
+
+    .feature-desc {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .feature-tag {
+      display: inline-block;
+      margin-top: 14px;
+      padding: 3px 10px;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      border-radius: 2px;
+      text-transform: uppercase;
+    }
+    .tag-dev  { background: rgba(0,200,160,0.1); color: var(--accent); border: 1px solid rgba(0,200,160,0.2); }
+    .tag-prod { background: rgba(0,128,255,0.1); color: var(--accent2); border: 1px solid rgba(0,128,255,0.2); }
+    .tag-both { background: rgba(200,220,232,0.06); color: var(--text); border: 1px solid var(--border); }
+
+    /* ── roadmap ── */
+    .roadmap {
+      padding: 100px 48px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .roadmap-inner { max-width: 1100px; margin: 0 auto; }
+
+    .roadmap-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 24px;
+      margin-top: 48px;
+    }
+
+    .roadmap-col {
+      border: 1px solid var(--border);
+      background: var(--bg);
+      padding: 28px 24px;
+    }
+
+    .roadmap-col-title {
+      font-family: var(--sans);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .roadmap-item {
+      display: flex; gap: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+    .roadmap-item::before {
+      content: "→";
+      color: var(--accent);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .roadmap-item.done { color: #3a5a4a; }
+    .roadmap-item.done::before { content: "✓"; color: #2a6a4a; }
+
+    /* ── install ── */
+    .install {
+      padding: 100px 48px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .code-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      padding: 20px 24px;
+      font-size: 13px;
+      line-height: 2;
+      margin-bottom: 16px;
+      overflow-x: auto;
+    }
+    .code-block .c { color: var(--muted); }
+    .code-block .k { color: var(--accent); }
+    .code-block .v { color: var(--accent2); }
+
+    /* ── footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 48px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 16px;
+    }
+    footer span { color: var(--muted); font-size: 12px; }
+    footer a { color: var(--muted); text-decoration: none; }
+    footer a:hover { color: var(--accent); }
+
+    /* ── animations ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    /* ── responsive ── */
+    @media (max-width: 640px) {
+      nav { padding: 14px 20px; }
+      .nav-links { display: none; }
+      .features, .roadmap, .install { padding: 60px 20px; }
+      footer { padding: 24px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="#">PEAT</a>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#roadmap">Roadmap</a>
+    <a href="#install">Install</a>
+    <a href="https://github.com/KhareLab/PEAT" target="_blank">GitHub</a>
+  </div>
+</nav>
+
+<!-- ── HERO ── -->
+<section class="hero">
+  <div class="grid-bg"></div>
+  <div class="hero-glow"></div>
+
+  <div class="hero-tag">KhareLab · Open Source</div>
+
+  <h1>Protein Engineering<br><span>Agent Toolkit</span></h1>
+
+  <p class="hero-sub">
+    RAG-powered structural biology assistant. Query PDB structures, fetch
+    open-access literature, run GROMACS jobs on HPC — all from a single interface.
+  </p>
+
+  <div class="hero-actions">
+    <a class="btn btn-primary" href="https://github.com/KhareLab/PEAT" target="_blank">
+      ⬡ &nbsp;View on GitHub
+    </a>
+    <a class="btn btn-outline" href="#install">
+      → &nbsp;Quick Start
+    </a>
+  </div>
+
+  <div class="terminal-wrap">
+    <div class="terminal">
+      <div class="terminal-bar">
+        <div class="dot dot-r"></div>
+        <div class="dot dot-y"></div>
+        <div class="dot dot-g"></div>
+      </div>
+      <div class="terminal-body">
+        <div><span class="t-prompt">$</span> <span class="t-cmd">streamlit run app.py</span></div>
+        <div class="t-out">  ✓ LLM endpoint  → <span class="t-val">openrouter.ai/api/v1</span></div>
+        <div class="t-out">  ✓ RAG source    → <span class="t-val">Unpaywall + library cookie</span></div>
+        <div class="t-out">  ✓ HPC backend   → <span class="t-val">ssh cluster.hpc (gmx ready)</span></div>
+        <div class="t-out">  ✓ PDB lookup    → <span class="t-ok">6B5X resolved</span></div>
+        <div class="t-out">  ✓ UniProt RAG   → <span class="t-ok">annotations loaded</span></div>
+        <div><span class="t-prompt">$</span> <span class="t-cursor"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FEATURES ── -->
+<section class="features" id="features">
+  <p class="section-label">Capabilities</p>
+  <h2 class="section-title">Everything a structural biologist needs</h2>
+  <div class="feature-grid">
+
+    <div class="feature-card">
+      <div class="feature-icon">📄</div>
+      <div class="feature-title">Open-Access RAG</div>
+      <div class="feature-desc">
+        Retrieves full-text papers via Unpaywall. Falls back to library auth cookies
+        (Zotero-style) in production, or Sci-Hub in dev mode.
+      </div>
+      <span class="feature-tag tag-both">Unpaywall · Sci-Hub · Library Auth</span>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon">🤖</div>
+      <div class="feature-title">Cost-Free LLM</div>
+      <div class="feature-desc">
+        Routed through OpenRouter in dev (free-tier models) and JIT-hosted on your
+        HPC via vLLM or Ollama in production. Zero API billing.
+      </div>
+      <span class="feature-tag tag-dev">OpenRouter (dev)</span>
+      <span class="feature-tag tag-prod" style="margin-left:6px">HPC-hosted (prod)</span>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon">⚙️</div>
+      <div class="feature-title">HPC Command Tool</div>
+      <div class="feature-desc">
+        Submit short GROMACS jobs directly from the sidebar. SSH-routed to your
+        cluster, with an allowlist, 5-min timeout, and local fallback for workstations.
+      </div>
+      <span class="feature-tag tag-both">gmx mdrun · SLURM · PBS</span>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon">🧬</div>
+      <div class="feature-title">Structure Viewer</div>
+      <div class="feature-desc">
+        Interactive 3Dmol.js viewer for any PDB ID. Hotspot detection via Cα contact
+        density, DynaMut ΔΔG predictions, and domain maps from UniProt.
+      </div>
+      <span class="feature-tag tag-both">3Dmol · PDB · UniProt</span>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon">🔍</div>
+      <div class="feature-title">Sequence → Structure</div>
+      <div class="feature-desc">
+        Paste a FASTA sequence and PEAT resolves the best matching PDB entry via
+        RCSB sequence search, then proceeds with full analysis automatically.
+      </div>
+      <span class="feature-tag tag-both">BLAST · RCSB · SIFTS</span>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon">⚗️</div>
+      <div class="feature-title">Catalytic Site Annotations</div>
+      <div class="feature-desc">
+        M-CSA active site data merged with UniProt functional comments,
+        summarised by the LLM into Structure / Function / Sequence bullets.
+      </div>
+      <span class="feature-tag tag-both">M-CSA · UniProt</span>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── ROADMAP ── -->
+<section class="roadmap" id="roadmap">
+  <div class="roadmap-inner">
+    <p class="section-label">Roadmap</p>
+    <h2 class="section-title">PEAT Q1 milestones</h2>
+    <div class="roadmap-grid">
+
+      <div class="roadmap-col">
+        <div class="roadmap-col-title">Infrastructure</div>
+        <div class="roadmap-item done">Move code to lab repo (KhareLab/PEAT)</div>
+        <div class="roadmap-item done">GitHub Pages front-end (this site)</div>
+        <div class="roadmap-item">NAIRR resource hosting</div>
+        <div class="roadmap-item">Persistent front-end deployment</div>
+      </div>
+
+      <div class="roadmap-col">
+        <div class="roadmap-col-title">LLM</div>
+        <div class="roadmap-item done">Remove direct OpenAI billing</div>
+        <div class="roadmap-item done">OpenRouter integration (dev)</div>
+        <div class="roadmap-item">JIT vLLM / Ollama on HPC (prod)</div>
+        <div class="roadmap-item">Model selection UI</div>
+      </div>
+
+      <div class="roadmap-col">
+        <div class="roadmap-col-title">RAG</div>
+        <div class="roadmap-item done">Unpaywall best_oa_location fix</div>
+        <div class="roadmap-item done">Sci-Hub fallback (dev flag)</div>
+        <div class="roadmap-item done">Library auth cookie support</div>
+        <div class="roadmap-item">Zotero connector integration</div>
+      </div>
+
+      <div class="roadmap-col">
+        <div class="roadmap-col-title">HPC</div>
+        <div class="roadmap-item done">HPC command tool (hpc_tools.py)</div>
+        <div class="roadmap-item done">gmx mdrun allowlist + timeout</div>
+        <div class="roadmap-item">SSH key config docs</div>
+        <div class="roadmap-item">Test RAG + HPC context workflow</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── INSTALL ── -->
+<section class="install" id="install">
+  <p class="section-label">Quick Start</p>
+  <h2 class="section-title" style="font-family: var(--sans); font-size: 36px; margin-bottom: 40px; color: #e8f4fc;">
+    Get running in 3 steps
+  </h2>
+
+  <div class="code-block">
+    <span class="c"># 1. Clone the repo</span><br>
+    <span class="k">git</span> clone https://github.com/KhareLab/PEAT.git<br>
+    <span class="k">cd</span> PEAT
+  </div>
+
+  <div class="code-block">
+    <span class="c"># 2. Install dependencies</span><br>
+    <span class="k">pip</span> install -r requirements.txt
+  </div>
+
+  <div class="code-block">
+    <span class="c"># 3. Configure secrets (.env or Streamlit secrets)</span><br>
+    <span class="v">OPENROUTER_API_KEY</span>=your_key_here<br>
+    <span class="v">UNPAYWALL_EMAIL</span>=your@email.edu<br>
+    <span class="c"># Optional — dev RAG fallback</span><br>
+    <span class="v">SCIHUB_ENABLED</span>=true<br>
+    <span class="c"># Optional — HPC execution</span><br>
+    <span class="v">HPC_HOST</span>=cluster.university.edu<br>
+    <span class="v">HPC_USER</span>=yournetid
+  </div>
+
+  <div class="code-block">
+    <span class="c"># 4. Launch</span><br>
+    <span class="k">streamlit</span> run app.py
+  </div>
+
+  <p style="color: var(--muted); font-size: 13px; margin-top: 24px; line-height: 1.8;">
+    Get a free OpenRouter API key at
+    <a href="https://openrouter.ai" target="_blank" style="color: var(--accent);">openrouter.ai</a>.
+    Free-tier models (Mistral-7B, Llama-3) are sufficient for development.
+    Point <code style="color: var(--accent2)">LLM_BASE_URL</code> at your HPC vLLM endpoint for production.
+  </p>
+</section>
+
+<footer>
+  <span>© 2025 KhareLab · Rutgers University</span>
+  <div style="display:flex; gap:24px;">
+    <a href="https://github.com/KhareLab/PEAT" target="_blank">GitHub</a>
+    <a href="https://github.com/KhareLab/PEAT/issues" target="_blank">Issues</a>
+    <a href="https://github.com/KhareLab/PEAT/blob/main/LICENSE" target="_blank">License</a>
+  </div>
+</footer>
+
+</body>
+</html>

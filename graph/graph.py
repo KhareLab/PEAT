@@ -1,3 +1,5 @@
+import sqlite3
+
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 
@@ -12,8 +14,8 @@ from graph.nodes.format_response import format_response
 
 
 def build_graph(db_path: str = "peat_state.db"):
-    checkpointer = SqliteSaver.from_conn_string(db_path)
-    checkpointer.setup()
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    checkpointer = SqliteSaver(conn)
 
     analysis = build_analysis_subgraph()
 
@@ -52,7 +54,6 @@ def build_graph(db_path: str = "peat_state.db"):
                  "alphafold", "foldseek", "analysis", "llm_qa"]:
         builder.add_edge(node, "format_response")
 
-    # blast_search uses Command for routing — no static edge needed
     builder.add_edge("format_response", END)
 
     return builder.compile(checkpointer=checkpointer)

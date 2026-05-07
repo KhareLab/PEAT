@@ -1,185 +1,51 @@
-# app.py
-import os
-import re
-import json
-import requests
+import uuid
 
 import streamlit as st
-from openai import OpenAI
+from langchain_core.messages import HumanMessage
 
-from data_fetch import (
-    get_pdb_data,
-    get_uniprot_ids_from_sifts,
-    get_unpaywall_data,
-    fetch_pdf_text,
-    get_m_csa_active_sites,
-    fetch_uniprot_features,
-    get_pdb_id_from_sequence,
-)
-from structure_tools import build_3dmol_html
-from sequence_tools import conservation_scores, run_blast
 from predictors import predict_ddg_dynamut
-from ui import plot_domains, plot_conservation
-from hpc_tools import (
-    run_hpc_command,
-    submit_minimization,
-    check_job_status,
-    download_job_results,
-)
-from bio_tools import foldseek_search, alphafold_fetch
+from graph import build_graph
+from graph.state import initial_state
 
-# ── LLM client ─────────────────────────────────────────────────────────────────
-_api_key  = os.getenv("OPENROUTER_API_KEY", "")
-_base_url = os.getenv("LLM_BASE_URL", "https://llm.jetstream-cloud.org/llama-4-scout/v1/")
-_model    = os.getenv("LLM_MODEL", "llama-4-scout")
-client    = OpenAI(api_key=_api_key, base_url=_base_url)
-EMAIL     = os.getenv("UNPAYWALL_EMAIL", "")
+# ── Graph singleton (module-level; one instance per Streamlit worker) ─────────
+graph = build_graph()
 
-_SYSTEM_PROMPT = (
-    "You are PEAT, a protein engineering assistant for the KhareLab at Rutgers University. "
-    "You help researchers analyze protein structures, interpret UniProt annotations, "
-    "understand literature, and run GROMACS simulations on Amarel HPC. "
-    "When referring to previously analyzed proteins, use the information from the conversation history."
-)
-
-_HPC_PREFIXES = {
-    "gmx", "python", "python3", "bash", "sh",
-    "squeue", "sacct", "sbatch", "scancel",
-    "echo", "ls", "cat", "head", "tail",
+# ── Node labels for status display ────────────────────────────────────────────
+_NODE_LABELS = {
+    "router":                "Routing…",
+    "hpc_command":           "Running HPC command…",
+    "hpc_minimize":          "Submitting energy minimization…",
+    "hpc_check":             "Checking job status…",
+    "hpc_download":          "Downloading results…",
+    "alphafold":             "Fetching AlphaFold structure…",
+    "foldseek":              "Running Foldseek search…",
+    "blast_search":          "Searching RCSB by sequence…",
+    "analysis":              "Analyzing protein…",
+    "fetch_pdb_meta":        "Fetching PDB metadata…",
+    "fetch_uniprot":         "Fetching UniProt annotations…",
+    "fetch_structure":       "Downloading structure…",
+    "fetch_active_sites":    "Fetching active site data…",
+    "summarize_annotations": "Summarizing annotations…",
+    "rag_literature":        "Retrieving literature…",
+    "llm_qa":                "Thinking…",
+    "format_response":       "Preparing response…",
 }
-# Matches energy minimization requests:
-#   "minimize 7W13" | "run energy minimization on 7W13" | "energy minimize 7W13"
-_MINIMIZE_RE = re.compile(
-    r'^\s*'
-    r'(?:run\s+)?'
-    r'(?:energy\s+)?'
-    r'minimi[sz]e?\s+'
-    r'(?:on\s+)?(?:pdb\s+)?'
-    r'([0-9][A-Za-z0-9]{3})'
-    r'\s*$'
-    r'|^\s*run\s+energy\s+minimization\s+(?:on\s+)?(?:pdb\s+)?([0-9][A-Za-z0-9]{3})\s*$',
-    re.IGNORECASE,
-)
 
-# Matches job status checks: "check job 1234567" | "check status 1234567"
-_CHECK_JOB_RE = re.compile(
-    r'^\s*(?:check|job|query)\s+(?:job\s+|status\s+)?(\d+)\s*$',
-    re.IGNORECASE,
-)
-
-# Matches result downloads: "download results 1234567" | "get results 1234567"
-_DOWNLOAD_RE = re.compile(
-    r'^\s*(?:download|get|fetch)\s+results?\s+(\d+)\s*$',
-    re.IGNORECASE,
-)
-
-# Matches messages whose intent is to fetch an AlphaFold structure:
-#   "alphafold Q9WYE2" | "fetch alphafold Q9WYE2" | "af2 Q9WYE2"
-_ALPHAFOLD_RE = re.compile(
-    r'^\s*'
-    r'(?:(?:fetch|get|show|load)\s+)?'
-    r'(?:alphafold|af2|af)\s+'
-    r'(?:for\s+)?'
-    r'([A-Za-z0-9]+)'
-    r'\s*$',
-    re.IGNORECASE,
-)
-
-# Matches messages whose intent is to run a Foldseek search:
-#   "foldseek 6B5X" | "similar structures 6B5X" | "find similar to 6B5X"
-_FOLDSEEK_RE = re.compile(
-    r'(?:^|.*\b)foldseek\b.*?(?:on|for|against|search)?\s+(?:pdb\s+)?([0-9][A-Za-z0-9]{3})\b'
-    r'|(?:find\s+similar(?:\s+structures?)?(?:\s+to)?'
-    r'|similar\s+structures?(?:\s+to)?'
-    r'|structure\s+search(?:\s+for)?)\s+(?:pdb\s+)?([0-9][A-Za-z0-9]{3})\b',
-    re.IGNORECASE,
-)
-
-# Matches messages whose *intent* is to analyze a PDB ID:
-#   "6B5X" | "analyze 6B5X" | "fetch pdb 6B5X" | "look up 6B5X"
-# Does NOT match PDB IDs embedded in longer questions.
-_ANALYZE_RE = re.compile(
-    r'^\s*'
-    r'(?:(?:analyze|analyse|fetch|show|load|look\s*up|get|examine|study|open|run)\s+)?'
-    r'(?:pdb\s+)?'
-    r'([0-9][A-Za-z0-9]{3})'
-    r'\s*$',
-    re.IGNORECASE,
-)
-
-# ── Page config ─────────────────────────────────────────────────────────────────
+# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(layout="wide", page_title="PEAT – Protein Engineering Agent Toolkit")
 st.title("🔬 PEAT – Protein Engineering Agent Toolkit")
 
-# ── Session state ───────────────────────────────────────────────────────────────
-if "messages" not in st.session_state:
-    # LLM context — text only, passed on every call
-    st.session_state.messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
-if "chat_display" not in st.session_state:
-    # Full display items including rich artifacts
+# ── Session state ─────────────────────────────────────────────────────────────
+if "thread_id" not in st.session_state:
+    st.session_state.thread_id  = str(uuid.uuid4())
     st.session_state.chat_display = []
-if "analyzed_pdb_ids" not in st.session_state:
-    # Set of PDB IDs already analyzed this session
-    st.session_state.analyzed_pdb_ids = set()
-if "hpc_jobs" not in st.session_state:
-    # job_id → {"pdb_id": str, "remote_dir": str}
-    st.session_state.hpc_jobs = {}
+    # Seed the checkpointer with the initial state for this thread
+    config = {"configurable": {"thread_id": st.session_state.thread_id}}
+    graph.update_state(config, initial_state())
 
 
-# ── RAG helper ──────────────────────────────────────────────────────────────────
-def _fetch_paper_text(doi: str, email: str) -> str | None:
-    """Priority: Unpaywall → library cookie → Sci-Hub (dev only)."""
-    if email:
-        ua_data = get_unpaywall_data(doi, email)
-        if ua_data:
-            best    = ua_data.get("best_oa_location") or {}
-            pdf_url = best.get("url_for_pdf") or ua_data.get("doi_url")
-            if pdf_url:
-                text = fetch_pdf_text(pdf_url)
-                if text and len(text) > 200:
-                    return text
-
-    lib_cookie = os.getenv("LIBRARY_COOKIE", "")
-    if lib_cookie:
-        try:
-            import fitz, tempfile
-            r = requests.get(
-                f"https://doi.org/{doi}",
-                headers={"Cookie": lib_cookie},
-                allow_redirects=True, timeout=15,
-            )
-            if r.ok and "pdf" in r.headers.get("Content-Type", "").lower():
-                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
-                    tf.write(r.content)
-                doc  = fitz.open(tf.name)
-                text = "".join(p.get_text() for p in doc)[:10000]
-                if text and len(text) > 200:
-                    return text
-        except Exception:
-            pass
-
-    if os.getenv("SCIHUB_ENABLED", "false").lower() == "true":
-        scihub_base = os.getenv("SCIHUB_URL", "https://sci-hub.se")
-        try:
-            r = requests.get(f"{scihub_base}/{doi}", timeout=20)
-            if r.ok:
-                match = re.search(r'src=["\']([^"\']*\.pdf[^"\']*)["\']', r.text)
-                if match:
-                    pdf_url = match.group(1)
-                    if pdf_url.startswith("//"):
-                        pdf_url = "https:" + pdf_url
-                    text = fetch_pdf_text(pdf_url)
-                    if text and len(text) > 200:
-                        return text
-        except Exception:
-            pass
-
-    return None
-
-
-# ── Artifact renderer ───────────────────────────────────────────────────────────
+# ── Artifact renderer ─────────────────────────────────────────────────────────
 def _render_artifact(artifact: dict) -> None:
-    """Render a single artifact inside the current Streamlit container."""
     t = artifact["type"]
     if t == "html":
         st.components.v1.html(artifact["data"], height=550)
@@ -192,8 +58,8 @@ def _render_artifact(artifact: dict) -> None:
     elif t == "mutation_form":
         form_key = artifact.get("key", "mutate_form")
         with st.form(form_key):
-            site     = st.text_input("Residue (e.g. A123)")
-            mutation = st.text_input("Mutation (e.g. A123C)")
+            site      = st.text_input("Residue (e.g. A123)")
+            mutation  = st.text_input("Mutation (e.g. A123C)")
             submitted = st.form_submit_button("Predict ΔΔG")
             if submitted:
                 try:
@@ -216,389 +82,7 @@ def _render_artifact(artifact: dict) -> None:
                     _render_artifact(sub)
 
 
-# ── Analysis pipeline ───────────────────────────────────────────────────────────
-def _run_analysis(pdb_id: str, user_question: str) -> tuple[str, list]:
-    """
-    Fetch and process all data for a PDB ID.
-    Returns (text_summary, artifacts) where text_summary goes into LLM context
-    and artifacts are rendered in the chat message.
-    """
-    pdb_id = pdb_id.upper()
-
-    entry = get_pdb_data(pdb_id)
-
-    citation = entry.get("rcsb_primary_citation", {})
-    doi      = citation.get("pdbx_database_id_doi", "N/A")
-    title    = citation.get("title", "N/A")
-    authors  = citation.get("rcsb_authors", [])
-    journal  = citation.get("rcsb_journal_abbrev", "N/A")
-
-    m_csa_sites = get_m_csa_active_sites(pdb_id)
-    uniprot_ids = get_uniprot_ids_from_sifts(pdb_id)
-    if uniprot_ids:
-        uniprot_id  = uniprot_ids[0]
-        up_features = fetch_uniprot_features(uniprot_id)
-    else:
-        uniprot_id  = None
-        up_features = {"features": [], "comments": [], "proteinDescription": {}, "genes": []}
-
-    # Try experimental structure; fall back to AlphaFold if unavailable
-    af_result = None
-    try:
-        pdb_resp = requests.get(
-            f"https://files.rcsb.org/download/{pdb_id}.pdb", timeout=30
-        )
-        pdb_resp.raise_for_status()
-        with open("temp.pdb", "wb") as f:
-            f.write(pdb_resp.content)
-        structure_source = "experimental"
-    except Exception:
-        if uniprot_id:
-            af_result = alphafold_fetch(uniprot_id)
-            import shutil
-            shutil.copy(af_result["pdb_path"], "temp.pdb")
-            structure_source = "alphafold"
-        else:
-            raise RuntimeError(
-                f"Could not download experimental structure for {pdb_id} "
-                "and no UniProt ID available for AlphaFold fallback."
-            )
-
-    # UniProt annotation summary via LLM
-    # Build context from UniProt comments when available; fall back to PDB
-    # metadata + UniProt features for unreviewed/sparse entries.
-    gpt_summary = {}
-    all_texts = []
-
-    for comment in up_features.get("comments", []):
-        if comment.get("texts"):
-            for text in comment["texts"]:
-                all_texts.append(text.get("value", ""))
-        elif comment.get("commentType") == "CATALYTIC ACTIVITY":
-            reaction = comment.get("reaction", {}).get("name", "")
-            ec_num   = comment.get("reaction", {}).get("ecNumber", "")
-            if reaction:
-                all_texts.append(f"Catalytic Activity: {reaction} (EC {ec_num})")
-        elif comment.get("commentType") == "SUBCELLULAR LOCATION":
-            for loc in comment.get("subcellularLocations", []):
-                val = loc.get("location", {}).get("value", "")
-                if val:
-                    all_texts.append(f"Subcellular Location: {val}")
-        elif comment.get("commentType") == "INTERACTION":
-            for interaction in comment.get("interactions", []):
-                g1    = interaction.get("interactantOne", {}).get("geneName", "")
-                g2    = interaction.get("interactantTwo", {}).get("geneName", "")
-                count = interaction.get("numberOfExperiments", 0)
-                all_texts.append(f"Interaction: {g1} ↔ {g2} ({count} experiments)")
-
-    # Fallback: supplement with PDB struct metadata and UniProt domain features
-    # when UniProt comments are absent (common for unreviewed TrEMBL entries)
-    if not all_texts:
-        print(f"[{pdb_id}] No UniProt comments for {uniprot_id} — using PDB metadata as fallback")
-        struct_title    = entry.get("struct", {}).get("title", "")
-        struct_keywords = entry.get("struct_keywords", {}).get("text", "")
-        paper_title     = title if title != "N/A" else ""
-        if struct_title:
-            all_texts.append(f"PDB structure title: {struct_title}")
-        if struct_keywords:
-            all_texts.append(f"PDB keywords: {struct_keywords}")
-        if paper_title:
-            all_texts.append(f"Associated paper: {paper_title}")
-        for feat in up_features.get("features", []):
-            feat_type = feat.get("type", "")
-            feat_desc = feat.get("description", "")
-            loc       = feat.get("location", {})
-            start     = loc.get("start", {}).get("value", "")
-            end       = loc.get("end", {}).get("value", "")
-            if feat_type and (feat_desc or feat_type != "Chain"):
-                all_texts.append(f"{feat_type}: {feat_desc} (residues {start}–{end})")
-
-    if all_texts:
-        annot_prompt = f"""You're an expert assistant for structural biologists.
-
-Summarize the following protein annotations into three categories:
-- Structure (domains, motifs, folding)
-- Function (enzymatic activity, pathways)
-- Sequence features (PTMs, polymorphisms, isoforms, signal peptides)
-
-Return strictly as JSON with keys: "Structure", "Function", "Sequence". Each value is a list of bullet-point strings.
-
----
-{chr(10).join(all_texts)}
----"""
-        try:
-            resp = client.chat.completions.create(
-                model=_model,
-                messages=[{"role": "user", "content": annot_prompt}],
-                temperature=0.3,
-                max_tokens=1000,
-            )
-            raw = resp.choices[0].message.content.strip()
-            if raw.startswith("```"):
-                raw = re.sub(r"^```[a-z]*\n?", "", raw)
-                raw = re.sub(r"\n?```$", "", raw)
-            try:
-                gpt_summary = json.loads(raw)
-            except Exception:
-                gpt_summary = {"Structure": [], "Function": [raw], "Sequence": []}
-        except Exception:
-            gpt_summary = {}
-
-    # Literature Q&A
-    lit_answer            = None
-    lit_answer_is_fallback = False
-    paper_text            = None
-
-    if doi != "N/A":
-        paper_text = _fetch_paper_text(doi, EMAIL)
-
-    if paper_text and user_question:
-        qa_prompt = (
-            f"You are an expert research assistant for protein engineers and biochemists.\n"
-            f"Use the paper (DOI: {doi}) to answer the following question.\n"
-            f"The paper may describe the protein family or close homologs rather than this exact protein — "
-            f"use any relevant context about the protein family, catalytic mechanism, conserved residues, "
-            f"or structural class to give the best possible answer.\n\n"
-            f"Question: {user_question}\n"
-            f"---\nPaper Excerpt (first 10 000 chars):\n{paper_text}\n---\nAnswer:"
-        )
-        try:
-            lit_answer = client.chat.completions.create(
-                model=_model,
-                messages=[{"role": "user", "content": qa_prompt}],
-                temperature=0.3,
-                max_tokens=1000,
-            ).choices[0].message.content
-        except Exception:
-            lit_answer = None
-
-    # Fallback: always run when no PDF was retrieved, using PDB + UniProt context
-    if not lit_answer:
-        lit_answer_is_fallback = True
-        fallback_context_parts = [
-            f"PDB ID: {pdb_id}",
-            f"Paper title: {title}" if title != "N/A" else "",
-            f"Journal: {journal}"   if journal != "N/A" else "",
-            f"DOI: {doi}"           if doi != "N/A" else "",
-        ]
-        fallback_context_parts += all_texts  # populated from UniProt comments or PDB metadata
-        fallback_context = "\n".join(p for p in fallback_context_parts if p)
-        paper_note = (
-            "The full text of the associated paper could not be retrieved. "
-            if doi != "N/A" else
-            "No associated paper DOI is available. "
-        )
-        fallback_prompt = (
-            f"You are an expert research assistant for protein engineers and biochemists.\n"
-            f"{paper_note}"
-            f"Answer the following question using only the metadata and annotations provided below. "
-            f"Clearly note at the end that your answer is based on available annotations only.\n\n"
-            f"Question: {user_question}\n"
-            f"---\nAvailable context:\n{fallback_context}\n---\nAnswer:"
-        )
-        try:
-            lit_answer = client.chat.completions.create(
-                model=_model,
-                messages=[{"role": "user", "content": fallback_prompt}],
-                temperature=0.3,
-                max_tokens=1000,
-            ).choices[0].message.content
-        except Exception:
-            lit_answer = None
-
-    # Protein identity fields
-    prot_desc = up_features.get("proteinDescription", {})
-    rec_name  = prot_desc.get("recommendedName", {})
-    name = rec_name.get("fullName", {}).get("value", "")
-    if not name:
-        # Unreviewed TrEMBL entries use submissionNames instead of recommendedName
-        sub_names = prot_desc.get("submissionNames", [])
-        name = (sub_names[0].get("fullName", {}).get("value", "") if sub_names else "") or "N/A"
-    ec   = (rec_name.get("ecNumbers", [{}]) or [{}])[0].get("value", "N/A")
-    gene = (
-        up_features.get("genes", [{}])[0].get("geneName", {}).get("value", "N/A")
-        if up_features.get("genes") else "N/A"
-    )
-
-    # Text summary stored in LLM context
-    text_summary = (
-        f"Analysis complete for **{pdb_id}**.\n"
-        f"- **Protein:** {name} | **Gene:** {gene} | **EC:** {ec}\n"
-        f"- **Paper:** _{title}_ ({journal}) — DOI: {doi}\n"
-    )
-    if structure_source == "alphafold" and af_result:
-        text_summary += (
-            f"- **Structure:** AlphaFold model ({af_result['entry_id']}) — "
-            f"no experimental PDB available. "
-            f"Mean pLDDT: {af_result['plddt_mean']} "
-            f"(min {af_result['plddt_min']}, max {af_result['plddt_max']})\n"
-        )
-    if gpt_summary.get("Function"):
-        text_summary += "\n**Functional notes:**\n" + "\n".join(f"- {b}" for b in gpt_summary["Function"]) + "\n"
-    if lit_answer:
-        label = "Annotation-based answer" if lit_answer_is_fallback else "Literature answer"
-        text_summary += f"\n**{label}:**\n{lit_answer[:400]}…\n"
-
-    # ── Artifacts ──────────────────────────────────────────────────────────────
-    # Tab 1: Literature & Catalysis
-    tab1 = []
-    tab1.append({"type": "markdown", "data": (
-        "### Paper Metadata\n"
-        f"- **DOI:** {doi}\n"
-        f"- **Title:** {title}\n"
-        f"- **Authors:** {', '.join(authors)}\n"
-        f"- **Journal:** {journal}"
-    )})
-    if name != "N/A":
-        tab1.append({"type": "markdown", "data": (
-            "### UniProt Annotations\n"
-            f"- **Protein:** {name}\n"
-            f"- **EC Number:** {ec}\n"
-            f"- **Gene:** {gene}"
-        )})
-    if gpt_summary.get("Function"):
-        tab1.append({"type": "markdown", "data":
-            "### Functional Roles\n" + "\n".join(f"- {b}" for b in gpt_summary["Function"])
-        })
-    if lit_answer:
-        header = (
-            "### Analysis _(paper unavailable — based on available annotations)_"
-            if lit_answer_is_fallback else
-            "### Literature Answer"
-        )
-        tab1.append({"type": "markdown", "data": f"{header}\n{lit_answer}"})
-    else:
-        tab1.append({"type": "markdown", "data":
-            "_No answer could be generated — paper inaccessible and annotation context insufficient._"
-        })
-
-    # Tab 2: Sequence & Domains
-    tab2 = []
-    if uniprot_id:
-        tab2.append({"type": "markdown", "data":
-            f"**UniProt:** [{uniprot_id}](https://www.uniprot.org/uniprotkb/{uniprot_id})"
-        })
-    if up_features.get("features"):
-        seq_len = entry.get("rcsb_entry_info", {}).get("polymer_monomer_count_maximum", 500)
-        tab2.append({"type": "plotly", "data": plot_domains(up_features["features"], seq_len)})
-    if gpt_summary.get("Sequence"):
-        tab2.append({"type": "markdown", "data":
-            "### Sequence Features\n" + "\n".join(f"- {b}" for b in gpt_summary["Sequence"])
-        })
-    if af_result:
-        tab2.append({"type": "markdown", "data": (
-            "### AlphaFold Confidence (pLDDT)\n"
-            f"- **Entry:** {af_result['entry_id']}\n"
-            f"- **Mean pLDDT:** {af_result['plddt_mean']} "
-            f"(min {af_result['plddt_min']}, max {af_result['plddt_max']})\n"
-            "_pLDDT > 90: very high confidence · 70–90: high · 50–70: low · < 50: very low_"
-        )})
-    if not tab2:
-        tab2.append({"type": "markdown", "data": "_No UniProt domain annotations found._"})
-
-    # Tab 3: Mutations & Predictions
-    tab3 = [
-        {"type": "markdown", "data": "### Mutation ΔΔG Predictions"},
-        {"type": "mutation_form", "data": None, "key": f"mutate_{pdb_id}"},
-    ]
-
-    artifacts = [
-        {"type": "tabs", "tabs": [
-            {"label": "Literature & Catalysis", "content": tab1},
-            {"label": "Sequence & Domains",      "content": tab2},
-            {"label": "Mutations & Predictions", "content": tab3},
-        ]},
-        {"type": "markdown", "data": "### 3D Structure Viewer"},
-        {"type": "html", "data": build_3dmol_html(pdb_id)},
-    ]
-
-    return text_summary, artifacts
-
-
-# ── Intent helpers ──────────────────────────────────────────────────────────────
-def _parse_analyze_request(text: str) -> str | None:
-    """Return the PDB ID if the message is a request to analyze one, else None."""
-    m = _ANALYZE_RE.match(text)
-    return m.group(1).upper() if m else None
-
-def _parse_foldseek_request(text: str) -> str | None:
-    """Return the PDB ID if the message is a Foldseek search request, else None."""
-    m = _FOLDSEEK_RE.search(text)
-    if not m:
-        return None
-    return (m.group(1) or m.group(2)).upper()
-
-def _parse_alphafold_request(text: str) -> str | None:
-    """Return the UniProt ID if the message is an AlphaFold fetch request, else None."""
-    m = _ALPHAFOLD_RE.match(text)
-    return m.group(1).upper() if m else None
-
-def _is_hpc_command(text: str) -> bool:
-    parts = text.strip().split()
-    return bool(parts) and parts[0].lower() in _HPC_PREFIXES
-
-def _parse_minimize_request(text: str) -> str | None:
-    """Return PDB ID if message is an energy minimization request, else None."""
-    m = _MINIMIZE_RE.match(text)
-    if not m:
-        return None
-    return (m.group(1) or m.group(2)).upper()
-
-def _parse_check_job(text: str) -> str | None:
-    """Return job ID if message is a job status check, else None."""
-    m = _CHECK_JOB_RE.match(text)
-    return m.group(1) if m else None
-
-def _parse_download_results(text: str) -> str | None:
-    """Return job ID if message is a results download request, else None."""
-    m = _DOWNLOAD_RE.match(text)
-    return m.group(1) if m else None
-
-_AA_CHARS     = set("ACDEFGHIKLMNPQRSTVWY")
-_AA_THRESHOLD = 0.80   # fraction of characters that must be valid AAs
-_MIN_SEQ_LEN  = 20     # ignore anything shorter
-
-def _parse_sequence_input(text: str) -> str | None:
-    """
-    Return the cleaned amino acid sequence if the message is a FASTA block or a
-    raw AA sequence; else None.
-
-    Rules (strict to avoid misrouting plain English):
-    - FASTA: message must contain at least one line starting with '>'.
-      Header lines are stripped; the remaining sequence is validated.
-    - Raw sequence: the entire message must contain NO spaces or tabs
-      (English sentences always have spaces; protein sequences do not),
-      and >= 80% of characters must be standard amino acids.
-    Plain English questions are never matched by either path.
-    """
-    stripped = text.strip()
-    lines    = stripped.splitlines()
-
-    # ── FASTA path: requires an explicit '>' header ──────────────────────────
-    if any(l.startswith(">") for l in lines):
-        seq_lines = [l.strip() for l in lines if not l.startswith(">")]
-        seq = "".join(seq_lines).upper()
-        if len(seq) < _MIN_SEQ_LEN:
-            return None
-        valid = sum(1 for c in seq if c in _AA_CHARS)
-        if valid / len(seq) >= _AA_THRESHOLD:
-            return seq
-        return None
-
-    # ── Raw sequence path: no spaces allowed ─────────────────────────────────
-    if " " in stripped or "\t" in stripped:
-        return None   # English sentences always have spaces — bail out early
-
-    seq = stripped.upper()
-    if len(seq) < _MIN_SEQ_LEN:
-        return None
-    valid = sum(1 for c in seq if c in _AA_CHARS)
-    if valid / len(seq) >= _AA_THRESHOLD:
-        return seq
-    return None
-
-
-# ── Sidebar ─────────────────────────────────────────────────────────────────────
+# ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.caption(
         "Type a PDB ID (e.g. `Analyze 6B5X`), a protein sequence (FASTA or plain AA), "
@@ -606,7 +90,7 @@ with st.sidebar:
     )
 
 
-# ── Render chat history ─────────────────────────────────────────────────────────
+# ── Render chat history ───────────────────────────────────────────────────────
 for item in st.session_state.chat_display:
     with st.chat_message(item["role"]):
         if item.get("content"):
@@ -615,240 +99,35 @@ for item in st.session_state.chat_display:
             _render_artifact(artifact)
 
 
-# ── Chat input loop ─────────────────────────────────────────────────────────────
+# ── Chat input loop ───────────────────────────────────────────────────────────
 if prompt := st.chat_input("Ask about a protein (e.g. 'Analyze 6B5X') or run an HPC command…"):
-    # Display user message
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    st.session_state.chat_display.append({"role": "user", "content": prompt})
+    # Show user message immediately
+    st.session_state.chat_display.append({"role": "user", "content": prompt, "artifacts": []})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    pdb_id        = _parse_analyze_request(prompt)
-    foldseek_id   = _parse_foldseek_request(prompt)
-    alphafold_id  = _parse_alphafold_request(prompt)
-    sequence      = _parse_sequence_input(prompt)
-    minimize_id   = _parse_minimize_request(prompt)
-    check_job_id  = _parse_check_job(prompt)
-    download_id   = _parse_download_results(prompt)
+    config = {"configurable": {"thread_id": st.session_state.thread_id}}
 
-    # Route: HPC command (checked first — unambiguous prefix match)
-    if _is_hpc_command(prompt):
-        with st.chat_message("assistant"):
-            with st.spinner("Running HPC command…"):
-                hpc_output = run_hpc_command(prompt.strip())
-            response = f"**HPC Output:**\n```bash\n{hpc_output}\n```"
-            st.markdown(response)
-            st.session_state.messages.append({"role": "assistant", "content": hpc_output})
-            st.session_state.chat_display.append({"role": "assistant", "content": response})
+    with st.chat_message("assistant"):
+        with st.status("Working…", expanded=False) as status:
+            for update in graph.stream(
+                {"raw_prompt": prompt, "messages": [HumanMessage(content=prompt)]},
+                config,
+                stream_mode="updates",
+            ):
+                node = list(update.keys())[0]
+                status.update(label=_NODE_LABELS.get(node, "Working…"))
+            status.update(state="complete", expanded=False)
 
-    # Route: energy minimization submission
-    elif minimize_id:
-        with st.chat_message("assistant"):
-            with st.spinner(f"Submitting energy minimization for {minimize_id} to Anvil…"):
-                try:
-                    result = submit_minimization(minimize_id)
-                    job_id = result["job_id"]
-                    st.session_state.hpc_jobs[job_id] = {
-                        "pdb_id":     result["pdb_id"],
-                        "remote_dir": result["remote_dir"],
-                    }
-                    response = (
-                        f"**Energy minimization submitted for {minimize_id}.**\n\n"
-                        f"- **Job ID:** `{job_id}`\n"
-                        f"- **Remote dir:** `{result['remote_dir']}`\n"
-                        f"- **Steps:** 500 × steepest descent, vacuum, OPLS-AA force field\n\n"
-                        f"Check progress with: `check job {job_id}`\n"
-                        f"Download results with: `download results {job_id}`"
-                    )
-                except Exception as e:
-                    response = f"Minimization submission failed: {e}"
-            st.markdown(response)
-            st.session_state.messages.append({"role": "assistant", "content": response})
-            st.session_state.chat_display.append({"role": "assistant", "content": response})
+        # Read the assistant display item added by format_response
+        final     = graph.get_state(config)
+        all_items = final.values.get("chat_display", [])
+        # The last item is the assistant response from this turn
+        last = all_items[-1] if all_items else {}
+        if last.get("content"):
+            st.markdown(last["content"])
+        for artifact in last.get("artifacts", []):
+            _render_artifact(artifact)
 
-    # Route: SLURM job status check
-    elif check_job_id:
-        with st.chat_message("assistant"):
-            with st.spinner(f"Checking job {check_job_id}…"):
-                try:
-                    status = check_job_status(check_job_id)
-                    response = f"**Job {check_job_id} status:**\n```\n{status}\n```"
-                except Exception as e:
-                    response = f"Job status check failed: {e}"
-            st.markdown(response)
-            st.session_state.messages.append({"role": "assistant", "content": response})
-            st.session_state.chat_display.append({"role": "assistant", "content": response})
-
-    # Route: download job results
-    elif download_id:
-        with st.chat_message("assistant"):
-            with st.spinner(f"Downloading results for job {download_id}…"):
-                try:
-                    job_info = st.session_state.hpc_jobs.get(download_id)
-                    if not job_info:
-                        raise RuntimeError(
-                            f"No record of job {download_id} in this session. "
-                            "Submit a minimization first, or check the job ID."
-                        )
-                    dl = download_job_results(download_id, job_info["pdb_id"])
-                    file_list = "\n".join(f"- `{f}`" for f in dl["files"])
-                    response = (
-                        f"**Results downloaded for job {download_id}.**\n\n"
-                        f"Saved to: `{dl['local_dir']}`\n\n"
-                        f"{file_list if dl['files'] else '_No output files found._'}"
-                    )
-                except Exception as e:
-                    response = f"Download failed: {e}"
-            st.markdown(response)
-            st.session_state.messages.append({"role": "assistant", "content": response})
-            st.session_state.chat_display.append({"role": "assistant", "content": response})
-
-    # Route: AlphaFold structure fetch
-    elif alphafold_id:
-        with st.chat_message("assistant"):
-            with st.spinner(f"Fetching AlphaFold structure for {alphafold_id}…"):
-                try:
-                    af = alphafold_fetch(alphafold_id)
-                    response = (
-                        f"### AlphaFold Structure — {alphafold_id}\n"
-                        f"- **Entry:** {af['entry_id']}\n"
-                        f"- **Gene:** {af['gene']} | **Organism:** {af['organism']}\n"
-                        f"- **Description:** {af['description']}\n"
-                        f"- **Mean pLDDT:** {af['plddt_mean']} "
-                        f"(min {af['plddt_min']}, max {af['plddt_max']})\n\n"
-                        "_pLDDT > 90: very high · 70–90: high · 50–70: low · < 50: very low_"
-                    )
-                    viewer_html = build_3dmol_html(alphafold_id, pdb_path=af["pdb_path"])
-                    artifacts = [
-                        {"type": "markdown", "data": response},
-                        {"type": "markdown", "data": "### 3D Structure Viewer"},
-                        {"type": "html",     "data": viewer_html},
-                    ]
-                    st.markdown(response)
-                    _render_artifact(artifacts[1])
-                    _render_artifact(artifacts[2])
-                    st.session_state.messages.append({"role": "assistant", "content": response})
-                    st.session_state.chat_display.append({
-                        "role": "assistant", "content": "", "artifacts": artifacts,
-                    })
-                except Exception as e:
-                    err = f"AlphaFold fetch failed: {e}"
-                    st.error(err)
-                    st.session_state.messages.append({"role": "assistant", "content": err})
-                    st.session_state.chat_display.append({"role": "assistant", "content": err})
-
-    # Route: Foldseek structural similarity search
-    elif foldseek_id:
-        with st.chat_message("assistant"):
-            with st.spinner(f"Running Foldseek search for {foldseek_id}…"):
-                try:
-                    hits = foldseek_search(foldseek_id)
-                    if hits:
-                        rows = ["| # | PDB/AF ID | Probability | E-value | Seq. Identity | Description |",
-                                "|---|-----------|-------------|---------|---------------|-------------|"]
-                        for i, h in enumerate(hits, 1):
-                            prob = f"{h['prob']:.3f}"              if h["prob"]               is not None else "—"
-                            ev   = f"{h['evalue']:.2e}"            if h["evalue"]             is not None else "—"
-                            sid  = f"{h['sequence_identity']:.1%}" if h["sequence_identity"]  is not None else "—"
-                            rows.append(f"| {i} | `{h['pdb_id']}` | {prob} | {ev} | {sid} | {h['description']} |")
-                        table_md = "\n".join(rows)
-                        response = f"### Foldseek — Top hits for {foldseek_id}\n\n{table_md}"
-                    else:
-                        response = f"Foldseek returned no hits for {foldseek_id}."
-
-                    artifact = {"type": "markdown", "data": response}
-                    st.markdown(response)
-                    st.session_state.messages.append({"role": "assistant", "content": response})
-                    st.session_state.chat_display.append({
-                        "role": "assistant", "content": "", "artifacts": [artifact],
-                    })
-                except Exception as e:
-                    err = f"Foldseek search failed: {e}"
-                    st.error(err)
-                    st.session_state.messages.append({"role": "assistant", "content": err})
-                    st.session_state.chat_display.append({"role": "assistant", "content": err})
-
-    # Route: new protein analysis
-    elif pdb_id and pdb_id not in st.session_state.analyzed_pdb_ids:
-        with st.chat_message("assistant"):
-            with st.spinner(f"Analyzing {pdb_id}…"):
-                try:
-                    text_summary, artifacts = _run_analysis(pdb_id, prompt)
-                    st.markdown(text_summary)
-                    for artifact in artifacts:
-                        _render_artifact(artifact)
-                    st.session_state.analyzed_pdb_ids.add(pdb_id)
-                    st.session_state.messages.append({"role": "assistant", "content": text_summary})
-                    st.session_state.chat_display.append({
-                        "role": "assistant", "content": text_summary, "artifacts": artifacts,
-                    })
-                except Exception as e:
-                    err = f"Analysis failed: {e}"
-                    st.error(err)
-                    st.session_state.messages.append({"role": "assistant", "content": err})
-                    st.session_state.chat_display.append({"role": "assistant", "content": err})
-
-    # Route: sequence input (FASTA or raw AA) → BLAST → analysis
-    elif sequence and not pdb_id:
-        with st.chat_message("assistant"):
-            with st.spinner("Searching RCSB for a matching PDB…"):
-                found_id = get_pdb_id_from_sequence(sequence)
-            if not found_id:
-                err = "No matching PDB found for the provided sequence."
-                st.warning(err)
-                st.session_state.messages.append({"role": "assistant", "content": err})
-                st.session_state.chat_display.append({"role": "assistant", "content": err})
-            elif found_id in st.session_state.analyzed_pdb_ids:
-                # Already analyzed — let the LLM answer from context
-                with st.spinner("Thinking…"):
-                    try:
-                        resp = client.chat.completions.create(
-                            model=_model,
-                            messages=st.session_state.messages,
-                            temperature=0.3,
-                            max_tokens=1000,
-                        )
-                        answer = resp.choices[0].message.content
-                    except Exception as e:
-                        answer = f"LLM error: {e}"
-                st.markdown(answer)
-                st.session_state.messages.append({"role": "assistant", "content": answer})
-                st.session_state.chat_display.append({"role": "assistant", "content": answer})
-            else:
-                with st.spinner(f"Analyzing {found_id}…"):
-                    try:
-                        text_summary, artifacts = _run_analysis(
-                            found_id,
-                            "What is the function and mechanism of this protein?",
-                        )
-                        st.markdown(text_summary)
-                        for artifact in artifacts:
-                            _render_artifact(artifact)
-                        st.session_state.analyzed_pdb_ids.add(found_id)
-                        st.session_state.messages.append({"role": "assistant", "content": text_summary})
-                        st.session_state.chat_display.append({
-                            "role": "assistant", "content": text_summary, "artifacts": artifacts,
-                        })
-                    except Exception as e:
-                        err = f"Analysis failed: {e}"
-                        st.error(err)
-                        st.session_state.messages.append({"role": "assistant", "content": err})
-                        st.session_state.chat_display.append({"role": "assistant", "content": err})
-
-    # Route: LLM with full history (questions, follow-ups, already-analyzed PDB IDs)
-    else:
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking…"):
-                try:
-                    resp = client.chat.completions.create(
-                        model=_model,
-                        messages=st.session_state.messages,
-                        temperature=0.3,
-                        max_tokens=1000,
-                    )
-                    answer = resp.choices[0].message.content
-                except Exception as e:
-                    answer = f"LLM error: {e}"
-            st.markdown(answer)
-            st.session_state.messages.append({"role": "assistant", "content": answer})
-            st.session_state.chat_display.append({"role": "assistant", "content": answer})
+    # Sync session state from graph (includes the assistant item added by format_response)
+    st.session_state.chat_display = final.values.get("chat_display", [])

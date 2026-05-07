@@ -1,9 +1,12 @@
 # Core web framework
 streamlit==1.47.0
 
-# LLM client — OpenRouter (dev) or HPC-hosted endpoint (prod).
-# OpenRouter is OpenAI-API-compatible; no billing change needed in code.
-openai>=1.30.0
+# LangChain / LangGraph
+langchain>=0.3
+langchain-openai>=0.3
+langchain-core>=0.3
+langgraph>=0.4
+langgraph-checkpoint-sqlite>=2.0
 
 # Bioinformatics
 biopython==1.85

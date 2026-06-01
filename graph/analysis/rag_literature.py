@@ -209,7 +209,8 @@ def rag_literature(state: PEATState) -> dict:
         })
     if up_features.get("features"):
         seq_len = pdb_entry.get("rcsb_entry_info", {}).get("polymer_monomer_count_maximum", 500)
-        tab2.append({"type": "plotly", "data": plot_domains(up_features["features"], seq_len)})
+        fig = plot_domains(up_features["features"], seq_len)
+        tab2.append({"type": "plotly", "data": fig.to_json()})
     if gpt_summary.get("Sequence"):
         tab2.append({"type": "markdown", "data":
             "### Sequence Features\n" + "\n".join(f"- {b}" for b in gpt_summary["Sequence"])

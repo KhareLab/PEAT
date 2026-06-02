@@ -50,7 +50,9 @@ def _render_artifact(artifact: dict) -> None:
     if t == "html":
         st.components.v1.html(artifact["data"], height=550)
     elif t == "plotly":
-        st.plotly_chart(artifact["data"], use_container_width=True)
+        import plotly.io as pio
+        fig = pio.from_json(artifact["data"])
+        st.plotly_chart(fig, use_container_width=True)
     elif t == "code":
         st.code(artifact["data"], language=artifact.get("language", ""))
     elif t == "markdown":

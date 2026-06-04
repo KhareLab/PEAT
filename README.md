@@ -121,8 +121,7 @@ Each parser is an independently-testable function in `graph/router.py`. Adding a
 PDB analysis is a 6-node linear subgraph (`graph/analysis/`). Each step writes its results to state fields that downstream nodes read:
 
 ```
-fetch_pdb_meta → fetch_uniprot → fetch_structure
-               → fetch_active_sites → summarize_annotations → rag_literature
+fetch_pdb_meta → fetch_uniprot → fetch_structure → fetch_active_sites → summarize_annotations → rag_literature
 ```
 
 | Node | Does |

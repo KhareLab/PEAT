@@ -28,3 +28,21 @@ def check_job_status(job_id: str) -> str:
 def download_job_results(job_id: str, pdb_id: str) -> dict:
     """Download results from a completed HPC energy minimization job."""
     return _download_job_results(job_id, pdb_id)
+
+
+SKILL_TESTS = [
+    {
+        "tool": "run_hpc_command",
+        "input": {"command": "squeue"},
+        "assert_type": str,
+        "description": "returns string output of squeue",
+        "skip": True,  # requires live HPC endpoint
+    },
+    {
+        "tool": "submit_minimization",
+        "input": {"pdb_id": "1TIM"},
+        "assert_type": dict,
+        "description": "submits minimization job for 1TIM",
+        "skip": True,  # requires Globus Compute endpoint
+    },
+]

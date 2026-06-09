@@ -49,3 +49,33 @@ def get_unpaywall_data(doi: str, email: str) -> dict:
 def fetch_pdf_text(pdf_url: str) -> str:
     """Download a PDF and extract its text content (up to 10 000 characters)."""
     return _fetch_pdf_text(pdf_url)
+
+
+SKILL_TESTS = [
+    {
+        "tool": "get_pdb_data",
+        "input": {"pdb_id": "1TIM"},
+        "assert_type": dict,
+        "assert_key": "rcsb_id",
+        "description": "returns RCSB metadata dict with rcsb_id key for 1TIM",
+    },
+    {
+        "tool": "get_uniprot_ids_from_sifts",
+        "input": {"pdb_id": "1TIM"},
+        "assert_type": list,
+        "assert_nonempty": True,
+        "description": "returns non-empty list of UniProt IDs for 1TIM",
+    },
+    {
+        "tool": "fetch_uniprot_features",
+        "input": {"uniprot_id": "P00533"},
+        "assert_type": dict,
+        "description": "returns UniProt feature dict for EGFR (P00533)",
+    },
+    {
+        "tool": "get_m_csa_active_sites",
+        "input": {"pdb_id": "1TIM"},
+        "assert_type": list,
+        "description": "returns active site annotations for 1TIM",
+    },
+]

@@ -1,4 +1,15 @@
 import uuid
+from pathlib import Path
+from dotenv import load_dotenv
+
+for _env_path in [
+    Path.cwd() / ".env",
+    Path.home() / ".config" / "peat" / ".env",
+    Path.home() / ".peat.env",
+]:
+    if _env_path.exists():
+        load_dotenv(_env_path)
+        break
 
 import streamlit as st
 from langchain_core.messages import HumanMessage

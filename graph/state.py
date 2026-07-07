@@ -39,6 +39,8 @@ class PEATState(TypedDict):
     uniprot_features: Optional[dict]
     m_csa_sites: Optional[list]
     paper_text: Optional[str]
+    paper_retrieval_status: Optional[str]
+    paper_source: Optional[str]
     gpt_summary: Optional[dict]
     structure_source: Optional[str]
     af_result: Optional[dict]
@@ -67,6 +69,8 @@ def initial_state() -> dict:
         "uniprot_features": None,
         "m_csa_sites": None,
         "paper_text": None,
+        "paper_retrieval_status": None,
+        "paper_source": None,
         "gpt_summary": None,
         "structure_source": None,
         "af_result": None,

@@ -26,6 +26,8 @@ def format_response(state: PEATState) -> dict:
         "uniprot_features": None,
         "m_csa_sites":      None,
         "paper_text":       None,
+        "paper_retrieval_status": None,
+        "paper_source":     None,
         "gpt_summary":      None,
         "structure_source": None,
         "af_result":        None,

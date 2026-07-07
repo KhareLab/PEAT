@@ -78,7 +78,7 @@ Six linear nodes compiled with `checkpointer=False`. They read/write to the shar
 
 `fetch_pdb_meta` → `fetch_uniprot` → `fetch_structure` → `fetch_active_sites` → `summarize_annotations` → `rag_literature`
 
-`rag_literature` is the only node that writes `response_text` and `artifacts`. It contains the paper retrieval cascade (`_fetch_paper_text`) and builds the full tab artifact structure.
+`rag_literature` is the only node that writes `response_text` and `artifacts`. It calls the redundant OA-first paper retrieval cascade (`graph/analysis/oa_resolver.resolve_oa_pdf` — Unpaywall → OpenAlex → Crossref, each source independently timeout/exception-hardened so one failing never blocks the others) and builds the full tab artifact structure. It also writes `paper_retrieval_status` (`"found"` / `"not_found"` / `"no_doi"`) and `paper_source` so retrieval outcome is machine-readable, and prepends a top-level `"callout"` artifact (success/warning) so the outcome is always visible, not just folded into fallback prose.
 
 `fetch_structure` writes to `temp.pdb` on disk — a side effect outside state, used immediately by downstream nodes and the mutation form.
 
@@ -103,6 +103,7 @@ The `artifacts` field is `list[dict]`. Each dict has a `"type"` key. The full se
 | `"tabs"` | `st.tabs` with nested `content` lists |
 | `"expander"` | `st.expander` with nested `content` list |
 | `"mutation_form"` | inline Streamlit form calling `predict_ddg_dynamut` against `temp.pdb` |
+| `"callout"` | `st.success` / `st.warning` / `st.error` (keyed by `"level"`, default `st.info`) — used by `rag_literature` to flag paper retrieval status |
 
 ## Adding a new intent
 

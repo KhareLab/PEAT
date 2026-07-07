@@ -1,68 +1,11 @@
 import os
-import re
 
-import requests
-
-from data_fetch import get_unpaywall_data, fetch_pdf_text
 from structure_tools import build_3dmol_html
 from ui import plot_domains
 
 from graph.state import PEATState
 from graph.chains import literature_qa_chain, annotation_qa_chain
-
-
-# ── Paper retrieval cascade ───────────────────────────────────────────────────
-
-def _fetch_paper_text(doi: str) -> str | None:
-    """Priority: Unpaywall → library cookie → Sci-Hub (dev only)."""
-    email = os.getenv("UNPAYWALL_EMAIL", "")
-
-    if email:
-        ua_data = get_unpaywall_data(doi, email)
-        if ua_data:
-            best    = ua_data.get("best_oa_location") or {}
-            pdf_url = best.get("url_for_pdf") or ua_data.get("doi_url")
-            if pdf_url:
-                text = fetch_pdf_text(pdf_url)
-                if text and len(text) > 200:
-                    return text
-
-    lib_cookie = os.getenv("LIBRARY_COOKIE", "")
-    if lib_cookie:
-        try:
-            import fitz, tempfile
-            r = requests.get(
-                f"https://doi.org/{doi}",
-                headers={"Cookie": lib_cookie},
-                allow_redirects=True, timeout=15,
-            )
-            if r.ok and "pdf" in r.headers.get("Content-Type", "").lower():
-                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
-                    tf.write(r.content)
-                doc  = fitz.open(tf.name)
-                text = "".join(p.get_text() for p in doc)[:10000]
-                if text and len(text) > 200:
-                    return text
-        except Exception:
-            pass
-
-    if os.getenv("SCIHUB_ENABLED", "false").lower() == "true":
-        scihub_base = os.getenv("SCIHUB_URL", "https://sci-hub.se")
-        try:
-            r = requests.get(f"{scihub_base}/{doi}", timeout=20)
-            if r.ok:
-                match = re.search(r'src=["\']([^"\']*\.pdf[^"\']*)["\']', r.text)
-                if match:
-                    pdf_url = match.group(1)
-                    if pdf_url.startswith("//"):
-                        pdf_url = "https:" + pdf_url
-                    text = fetch_pdf_text(pdf_url)
-                    if text and len(text) > 200:
-                        return text
-        except Exception:
-            pass
-
-    return None
+from graph.analysis.oa_resolver import resolve_oa_pdf
 
 
 # ── Main node ─────────────────────────────────────────────────────────────────
@@ -76,7 +19,7 @@ def rag_literature(state: PEATState) -> dict:
     raw_prompt  = state.get("raw_prompt") or ""
 
     citation = pdb_entry.get("rcsb_primary_citation", {})
-    doi      = citation.get("pdbx_database_id_doi", "N/A")
+    doi      = citation.get("pdbx_database_id_DOI", "N/A")
     title    = citation.get("title", "N/A")
     authors  = citation.get("rcsb_authors", [])
     journal  = citation.get("rcsb_journal_abbrev", "N/A")
@@ -107,13 +50,13 @@ def rag_literature(state: PEATState) -> dict:
         if up_features.get("genes") else "N/A"
     )
 
-    # Literature retrieval and Q&A
-    paper_text            = None
+    # Literature retrieval and Q&A — redundant OA-first cascade, never raises
+    resolution        = resolve_oa_pdf(doi, email=os.getenv("UNPAYWALL_EMAIL", ""))
+    paper_text        = resolution.text
+    paper_source      = resolution.source
+    retrieval_status  = resolution.status  # "found" | "not_found" | "no_doi"
     lit_answer            = None
     lit_answer_is_fallback = False
-
-    if doi != "N/A":
-        paper_text = _fetch_paper_text(doi)
 
     user_question = raw_prompt or f"What is the function and mechanism of {pdb_id}?"
 
@@ -137,9 +80,9 @@ def rag_literature(state: PEATState) -> dict:
         ] + all_texts
         fallback_context = "\n".join(p for p in fallback_context_parts if p)
         paper_note = (
-            "The full text of the associated paper could not be retrieved. "
-            if doi != "N/A" else
             "No associated paper DOI is available. "
+            if retrieval_status == "no_doi" else
+            "The full text of the associated paper could not be retrieved. "
         )
         try:
             lit_answer = annotation_qa_chain.invoke({
@@ -232,7 +175,21 @@ def rag_literature(state: PEATState) -> dict:
         {"type": "mutation_form", "data": None, "key": f"mutate_{pdb_id}"},
     ]
 
+    # ── Paper retrieval status callout — always visible, never buried in a tab ──
+    if retrieval_status == "found":
+        callout = {"type": "callout", "level": "success",
+                   "text": f"Full-text paper retrieved via {paper_source} (DOI: {doi})."}
+    elif retrieval_status == "not_found":
+        callout = {"type": "callout", "level": "warning",
+                   "text": ("A DOI was found but the full-text paper could not be retrieved from "
+                            "Unpaywall, OpenAlex, or Crossref. Answering from PDB/UniProt annotations only.")}
+    else:  # "no_doi"
+        callout = {"type": "callout", "level": "warning",
+                   "text": ("No associated publication DOI is available for this structure. "
+                            "Answering from PDB/UniProt annotations only.")}
+
     artifacts = [
+        callout,
         {"type": "tabs", "tabs": [
             {"label": "Literature & Catalysis", "content": tab1},
             {"label": "Sequence & Domains",      "content": tab2},
@@ -242,4 +199,10 @@ def rag_literature(state: PEATState) -> dict:
         {"type": "html",     "data": build_3dmol_html(pdb_id)},
     ]
 
-    return {"response_text": text_summary, "artifacts": artifacts, "paper_text": paper_text}
+    return {
+        "response_text": text_summary,
+        "artifacts": artifacts,
+        "paper_text": paper_text,
+        "paper_retrieval_status": retrieval_status,
+        "paper_source": paper_source,
+    }

@@ -57,6 +57,11 @@ def _render_artifact(artifact: dict) -> None:
         st.code(artifact["data"], language=artifact.get("language", ""))
     elif t == "markdown":
         st.markdown(artifact["data"])
+    elif t == "callout":
+        level = artifact.get("level", "info")
+        {"success": st.success, "warning": st.warning, "error": st.error}.get(level, st.info)(
+            artifact.get("text", "")
+        )
     elif t == "mutation_form":
         form_key = artifact.get("key", "mutate_form")
         with st.form(form_key):

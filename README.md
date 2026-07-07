@@ -9,7 +9,7 @@
 PEAT is a Streamlit chatbot that combines four capabilities:
 
 1. **Structure analysis** — PDB lookup, interactive 3D viewer (3Dmol.js), UniProt domain maps, M-CSA active sites, AlphaFold structure fetching
-2. **Literature RAG** — retrieves open-access papers via Unpaywall, runs LLM Q&A against the full text
+2. **Literature RAG** — retrieves open-access papers via a redundant Unpaywall → OpenAlex → Crossref cascade, runs LLM Q&A against the full text
 3. **Structural similarity** — Foldseek search against PDB, AlphaFold DB, and SwissProt
 4. **HPC execution** — submits GROMACS energy minimization jobs to Anvil (NAIRR allocation) via Globus Compute, monitors job status, and downloads results — all from the chat box
 
@@ -50,7 +50,6 @@ LLM_MODEL=llama-4-scout
 
 # RAG
 UNPAYWALL_EMAIL=your@email.edu
-SCIHUB_ENABLED=false
 
 # HPC — Anvil (NAIRR allocation) via Globus Compute
 GLOBUS_COMPUTE_ENDPOINT_ID=your-endpoint-uuid
@@ -131,7 +130,7 @@ fetch_pdb_meta → fetch_uniprot → fetch_structure → fetch_active_sites → 
 | `fetch_structure` | RCSB PDB download; AlphaFold fallback via `alphafold_fetch` tool → `structure_source`, `af_result` |
 | `fetch_active_sites` | M-CSA REST → `m_csa_sites` |
 | `summarize_annotations` | UniProt comments → LLM (`annotation_chain`) → `gpt_summary` JSON |
-| `rag_literature` | Unpaywall cascade → LLM Q&A against paper text (`literature_qa_chain`); annotation fallback if no paper → `response_text`, `artifacts` |
+| `rag_literature` | Unpaywall → OpenAlex → Crossref cascade (`oa_resolver.resolve_oa_pdf`) → LLM Q&A against paper text (`literature_qa_chain`); annotation fallback if no paper → `response_text`, `artifacts`, `paper_retrieval_status`, `paper_source` |
 
 HTTP-only nodes (`fetch_pdb_meta`, `fetch_uniprot`, `fetch_active_sites`) have `RetryPolicy(max_attempts=3)`.
 
@@ -176,12 +175,12 @@ Both are Jetstream2-hosted, OpenAI-compatible, and require no API key.
 
 ## RAG pipeline
 
-Paper retrieval is attempted in this order:
-1. **Unpaywall** — open-access PDF (always on; requires `UNPAYWALL_EMAIL`)
-2. **Library cookie** — set `LIBRARY_COOKIE` env var for institutional access
-3. **Sci-Hub** — set `SCIHUB_ENABLED=true` (dev only)
+Paper retrieval (`graph/analysis/oa_resolver.py`) is attempted, redundantly, in this order:
+1. **Unpaywall** — open-access PDF (requires `UNPAYWALL_EMAIL`; skipped without it, no error)
+2. **OpenAlex** — open-access PDF via `open_access.oa_url`
+3. **Crossref** — PDF link via registered `link[]` metadata
 
-If no paper is retrieved, the LLM answers from PDB metadata and UniProt annotations instead.
+Every source is independently timeout- and exception-hardened, so one source failing never blocks the others. The outcome is recorded in state as `paper_retrieval_status` (`"found"` / `"not_found"` / `"no_doi"`) and `paper_source`, and surfaced to the user as a visible success/warning callout above the analysis tabs — not just folded into generated prose. If no paper is retrieved (no DOI, or DOI present but unresolvable from all three sources), the LLM answers from PDB metadata and UniProt annotations instead.
 
 ## HPC
 

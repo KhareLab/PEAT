@@ -9,7 +9,7 @@ def get_pdb_data(pdb_id: str) -> dict:
     """
     pdb_id = pdb_id.upper()
     url = f"https://data.rcsb.org/rest/v1/core/entry/{pdb_id}"
-    r = requests.get(url)
+    r = requests.get(url, timeout=10)
     r.raise_for_status()
     entry = r.json()
 
@@ -25,15 +25,19 @@ def get_uniprot_ids_from_sifts(pdb_id: str) -> list[str]:
     return list(data.keys()) 
 
 
-def get_unpaywall_data(doi: str, email: str) -> dict | None:
+def get_unpaywall_data(doi: str, email: str, timeout: int = 10) -> dict | None:
     """
-    Retrieves Unpaywall JSON for a given DOI.
+    Retrieves Unpaywall JSON for a given DOI. Never raises — returns None on
+    any network error, non-200 status, or malformed response.
     """
     url = f"https://api.unpaywall.org/v2/{doi}?email={email}"
-    r = requests.get(url)
-    if r.status_code != 200:
+    try:
+        r = requests.get(url, timeout=timeout)
+        if r.status_code != 200:
+            return None
+        return r.json()
+    except (requests.RequestException, ValueError):
         return None
-    return r.json()
 
 
 def fetch_pdf_text(pdf_url: str, max_chars: int = 10000) -> str:

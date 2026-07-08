@@ -7,6 +7,8 @@ from predictors import predict_ddg_dynamut
 from graph import build_graph
 from graph.state import initial_state
 
+import os
+
 # ── Graph singleton (module-level; one instance per Streamlit worker) ─────────
 graph = build_graph()
 
@@ -35,6 +37,8 @@ _NODE_LABELS = {
 st.set_page_config(layout="wide", page_title="PEAT – Protein Engineering Agent Toolkit")
 st.title("🔬 PEAT – Protein Engineering Agent Toolkit")
 
+
+
 # ── Session state ─────────────────────────────────────────────────────────────
 if "thread_id" not in st.session_state:
     st.session_state.thread_id  = str(uuid.uuid4())
@@ -43,13 +47,15 @@ if "thread_id" not in st.session_state:
     config = {"configurable": {"thread_id": st.session_state.thread_id}}
     graph.update_state(config, initial_state())
 
+print(f"Session thread ID: {st.session_state.thread_id}")
 
 # ── Artifact renderer ─────────────────────────────────────────────────────────
 def _render_artifact(artifact: dict) -> None:
     t = artifact["type"]
+    print(t)
     if t == "html":
         st.components.v1.html(artifact["data"], height=550)
-    elif t == "plotly":
+    elif artifact["type"] == "plotly":
         import plotly.io as pio
         fig = pio.from_json(artifact["data"])
         st.plotly_chart(fig, use_container_width=True)
@@ -92,6 +98,20 @@ with st.sidebar:
     )
 
 
+upoladed_file=st.file_uploader("Upload a PDB or FASTA file", type=["pdb","fa","fasta"])
+
+UPLOAD_DIR = "uploaded_files"
+if upoladed_file is not None:
+    with st.chat_message("user"):
+        st.markdown(f"Uploaded PDB file: {upoladed_file.name}")
+    # Save the uploaded file to the UPLOAD_DIR
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    file_path = os.path.join(UPLOAD_DIR, upoladed_file.name)
+    with open(file_path, "wb") as f:
+        f.write(upoladed_file.getbuffer())
+    
+
+
 # ── Render chat history ───────────────────────────────────────────────────────
 for item in st.session_state.chat_display:
     with st.chat_message(item["role"]):
@@ -119,6 +139,7 @@ if prompt := st.chat_input("Ask about a protein (e.g. 'Analyze 6B5X') or run an 
             ):
                 node = list(update.keys())[0]
                 status.update(label=_NODE_LABELS.get(node, "Working…"))
+                print(f"Node {node} completed. State update: {update[node]}")
             status.update(state="complete", expanded=False)
 
         # Read the assistant display item added by format_response
@@ -130,6 +151,10 @@ if prompt := st.chat_input("Ask about a protein (e.g. 'Analyze 6B5X') or run an 
             st.markdown(last["content"])
         for artifact in last.get("artifacts", []):
             _render_artifact(artifact)
+        print("Assistant response rendered.")
 
     # Sync session state from graph (includes the assistant item added by format_response)
     st.session_state.chat_display = final.values.get("chat_display", [])
+
+
+

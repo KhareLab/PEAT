@@ -10,7 +10,12 @@ from graph.nodes.hpc import hpc_command, hpc_minimize, hpc_check, hpc_download
 from graph.nodes.bio import alphafold, foldseek
 from graph.nodes.sequence import blast_search
 from graph.nodes.llm_qa import llm_qa
+from graph.nodes.mpnn import protein_mpnn
+from graph.nodes.af3 import alphafold3
+from graph.nodes.stabilzation import stabilization_workflow
 from graph.nodes.format_response import format_response
+
+
 
 
 def build_graph(db_path: str = "peat_state.db"):
@@ -31,7 +36,11 @@ def build_graph(db_path: str = "peat_state.db"):
     builder.add_node("blast_search",    blast_search)
     builder.add_node("analysis",        analysis)
     builder.add_node("llm_qa",          llm_qa)
+    builder.add_node("protein_mpnn",    protein_mpnn)
+    builder.add_node("alphafold3",      alphafold3)
+    builder.add_node("stabilization",   stabilization_workflow)
     builder.add_node("format_response", format_response)
+
 
     builder.add_edge(START, "router")
     builder.add_conditional_edges(
@@ -47,11 +56,14 @@ def build_graph(db_path: str = "peat_state.db"):
             "analyze":   "analysis",
             "sequence":  "blast_search",
             "llm_qa":    "llm_qa",
+            "protein_mpnn": "protein_mpnn",
+            "alphafold3": "alphafold3",
+            "stabilization": "stabilization",
         },
     )
 
     for node in ["hpc_command", "hpc_minimize", "hpc_check", "hpc_download",
-                 "alphafold", "foldseek", "analysis", "llm_qa"]:
+                 "alphafold", "foldseek", "analysis", "llm_qa", "protein_mpnn", "alphafold3", "stabilization"]:
         builder.add_edge(node, "format_response")
 
     builder.add_edge("format_response", END)

@@ -13,9 +13,9 @@ def protein_mpnn(state: PEATState)-> dict:
         remote_location= "/home/cd1061",  
     )
 
-    for file in os.listdir("uploaded_files"):
+    for file in os.listdir("data/uploaded_files"):
         if file.endswith(".pdb"):
-            local_pdb_path = os.path.join("uploaded_files", file)
+            local_pdb_path = os.path.join("data/uploaded_files", file)
             break
 
     remote_pdb_path = f"{cfg.remote_location}/{pdb_id}/mpnn/pdb"

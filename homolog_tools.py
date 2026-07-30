@@ -5,9 +5,13 @@ from pathlib import Path
 from slurm_tools import ssh_run, get_slurm_job_id, wait_for_slurm_job
 import json
 import requests
+import shlex
 import time
 
 STABILIZATION_DIR = "/projects/f_sdk94_1/Tools/StabilizationProtocol"
+
+
+
 
 def create_conservation_directoires(loc: str, target: str):
     remote_cmd = " && ".join([
@@ -27,10 +31,57 @@ def create_conservation_directoires(loc: str, target: str):
     
     response= ssh_run(remote_cmd)
     print(response.stdout)
-    
+from pathlib import Path
+import shlex
 
 
-def submit_hhblits_job(loc:str,target_name: str, pdb_filename: str):
+
+def cif_to_pdb_amarel(file_location: str) -> str:
+    cif_path = Path(file_location)
+    pdb_path = cif_path.with_suffix(".pdb")
+
+    directory = shlex.quote(str(cif_path.parent))
+    cif_name = cif_path.name
+    pdb_name = pdb_path.name
+
+    python_executable = "/projects/f_sdk94_1/conda/envs/aifold/bin/python"
+
+    print(f"Converting CIF to PDB: {cif_path} -> {pdb_path}")
+    print(f"Directory: {cif_path.parent}")
+
+    cmd = (
+        f"cd {directory} && "
+        f"{python_executable} - <<'PY'\n"
+        "from Bio.PDB import MMCIFParser, PDBIO\n"
+        "\n"
+        f"input_cif = {cif_name!r}\n"
+        f"output_pdb = {pdb_name!r}\n"
+        "\n"
+        "parser = MMCIFParser(QUIET=True)\n"
+        "structure = parser.get_structure('model', input_cif)\n"
+        "\n"
+        "io = PDBIO()\n"
+        "io.set_structure(structure)\n"
+        "io.save(output_pdb)\n"
+        "\n"
+        "print(f'Converted {input_cif} -> {output_pdb}')\n"
+        "PY\n"
+        f"test -s {shlex.quote(pdb_name)}"
+    )
+
+    response = ssh_run(cmd)
+
+    print("STDOUT:")
+    print(response.stdout)
+
+    if response.stderr:
+        print("STDERR:")
+        print(response.stderr)
+
+    return str(pdb_path)
+
+def submit_hhblits_job(loc:str,target_name: str, pdb_filename: str, catalytic_residues: list[str] = []):
+    print(f"formated catalytic residues: {','.join(map(str, catalytic_residues))}")
     local_pdb = Path(pdb_filename)
     filename_without_ext = local_pdb.stem
     remote_conservation = f"{loc}/{target_name}/conservation"
@@ -43,10 +94,13 @@ def submit_hhblits_job(loc:str,target_name: str, pdb_filename: str):
         ],
         check=True
     )
+
+    pdb_filename = cif_to_pdb_amarel(remote_conservation + "/" + remote_pdb_name)
+
     print("File name without extension: ", filename_without_ext)
     remote_cmd = " && ".join([
         f"cd {loc}/{target_name}/conservation",
-        r"sed -i 's/CATALYTIC_RESIDUES=\"[^\"]*\"/CATALYTIC_RESIDUES=\"274,283,342,426\"/' run_hhblits_search.sh",
+        f"sed -i 's/CATALYTIC_RESIDUES=\"[^\"]*\"/CATALYTIC_RESIDUES=\"{','.join(map(str, catalytic_residues))}\"/' run_hhblits_search.sh",
         "source ~/.bashrc",
         "conda activate /projects/f_sdk94_1/conda/envs/aifold",
         "which hhblits",
@@ -55,6 +109,8 @@ def submit_hhblits_job(loc:str,target_name: str, pdb_filename: str):
     response= ssh_run(remote_cmd)
     wait_for_slurm_job(get_slurm_job_id(response.stdout), "cd1061")
     print(response.stdout)
+
+
 
 
 
@@ -115,9 +171,3 @@ def run_foldseek_pdb100(pdb_path: str, output_dir: str) -> list[dict]:
     return hits_id[:50]
 
 
-
-
-'''
-create_conservation_directoires('.', "Alpha")
-submit_hhblits_job(".", "Alpha", "A0A9P7YUI4.pdb")
-'''

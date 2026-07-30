@@ -4,6 +4,31 @@ import time
 import requests
 import statistics
 
+import re
+import shlex
+from slurm_tools import ssh_run, get_slurm_job_id
+
+
+def run_foldseek_amarel(remote_dir: str, pdb_filename: str) -> str:
+    pdb_name = shlex.quote(pdb_filename)
+    print(f"Running Foldseek for PDB file: {pdb_filename} in remote directory: {remote_dir}")
+
+    cmd = " && ".join([
+        f"cd {shlex.quote(remote_dir)}",
+        "mkdir -p foldseek",
+        "cd foldseek",
+        "cp /projects/f_sdk94_1/Tools/FoldSeek/* .",
+        #f"cp {pdb_name} .",
+        # Replace the old -q value inside the existing Slurm script.
+        f"sed -i 's|-q [^ ]*|-q {shlex.quote(pdb_filename)}|' run_foldseek_hits.py",
+        # Submit the existing script and print its job ID.
+        "sbatch --parsable run_foldseek_hits.py",
+    ])
+
+    result = ssh_run(cmd)
+    job_id = get_slurm_job_id(result.stdout)
+    return job_id
+
 _FOLDSEEK_URL = "https://search.foldseek.com/api"
 _CACHE_DIR    = "/tmp/peat_structures"
 

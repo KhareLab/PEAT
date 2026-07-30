@@ -12,7 +12,7 @@ from graph.nodes.sequence import blast_search
 from graph.nodes.llm_qa import llm_qa
 from graph.nodes.mpnn import protein_mpnn
 from graph.nodes.af3 import alphafold3
-from graph.nodes.stabilzation import stabilization_workflow
+from graph.nodes.stabilization import stabilization_workflow
 from graph.nodes.format_response import format_response
 
 

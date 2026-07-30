@@ -19,7 +19,7 @@ class AF3Config:
     wait: bool=True
     af3_tools_dir: str="/projects/f_sdk94_1/Tools/AlphaFold3/af3_monomer"
     remote_base: str="/home/cd1061/Alpha"  # Base directory on the remote server for AF3 jobs
-    local_base: str="output"  # Base directory on the local machine for AF3 results
+    local_base: str="data/output"  # Base directory on the local machine for AF3 results
 
 
 def copy_stabilization_scripts(remote_dir: str, cfg: AF3Config) -> None:
@@ -136,15 +136,16 @@ def download_af3_results(target_name: str, cfg: AF3Config) -> None:
 def download_top_af3_model(target_name: str, design_name: str, cfg: AF3Config) -> None:
     print(f"Downloading top AF3 model for {target_name}, {design_name}...")
     print(f"Remote base: {cfg.remote_base}, Local base: {cfg.local_base}")
+
     remote_model_path = (
-        f"{cfg.remote_base}/af3/af_output/af_output/"
-        f"design_01_/model.cif"
+        f"{cfg.remote_base}/{target_name}/af3/af_output/af_output/design_1_af3"
+        f"/{design_name}_af3_model.cif"
     )
 
     local_dir = f"{cfg.local_base}/{target_name}/af3/top_models"
     os.makedirs(local_dir, exist_ok=True)
 
-    local_model_path = f"{local_dir}/model.cif"
+    local_model_path = f"{local_dir}/{design_name}_model.cif"
 
     cmd = [
         "scp",
@@ -198,14 +199,14 @@ def run_af3_monomer(
 
     print(f"JSON_JOB_ID: {json_job_id}, AF3_JOB_ID: {af3_job_id}")
 
-    #if cfg.wait and af3_job_id:
-    #    wait_for_slurm_job(af3_job_id, cfg.netid)
-    #    wait_for_user_af3_jobs(cfg.netid)
+    if cfg.wait and af3_job_id:
+        wait_for_slurm_job(af3_job_id, cfg.netid)
+        wait_for_user_af3_jobs(cfg.netid)
 
     if download_type == "all":
         download_af3_results(target_name, cfg)
     elif download_type == "top_model":
-        download_top_af3_model(target_name, design_name="design_01", cfg=cfg)
+        download_top_af3_model(target_name, design_name="design_1", cfg=cfg)
 
     return {
         "target_name": target_name,

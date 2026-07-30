@@ -114,8 +114,8 @@ def run_proteinmpnn(
     return job_id
 
 def download_proteinmpnn_results(loc: str, pdb_id: str, cfg: ProteinMPNNConfig) -> None:
-    remote_results_dir = f"{remote_mpnn_dir(f'{loc}/{pdb_id}')}/results"
-    local_results_dir = Path(f"downloaded_results/{pdb_id}")
+    remote_results_dir = f"{remote_mpnn_dir(f'{loc}/{pdb_id}')}/cpos_50"
+    local_results_dir = Path(f"data/downloaded_results/{pdb_id}")
     local_results_dir.mkdir(parents=True, exist_ok=True)
 
     subprocess.run(
@@ -127,7 +127,7 @@ def download_proteinmpnn_results(loc: str, pdb_id: str, cfg: ProteinMPNNConfig) 
         ],
         check=True,
     )
-    
+
 
 
 def run_proteinmpnn_test(
@@ -135,6 +135,7 @@ def run_proteinmpnn_test(
     loc: str,
     num_runs: int = 16,
     constraints_file: str = "A0A9P7YUI4_cpos_50.jsonl",
+    catalytic_residues: list[str] = [],
     output_name: str = "cpos_50",
     soluble: bool = False):
     local_pdb = Path(input_file)
@@ -178,4 +179,6 @@ def run_proteinmpnn_test(
     response= ssh_run(remote_cmd)
 
     wait_for_slurm_job(get_slurm_job_id(response.stdout), "cd1061")
+
+    download_proteinmpnn_results(loc, pdb_name, ProteinMPNNConfig())
 

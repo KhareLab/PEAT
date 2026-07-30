@@ -33,6 +33,7 @@ class PEATState(TypedDict):
     hpc_command: Optional[str]
     job_id: Optional[str]
     sequence: Optional[str]
+    target_name: Optional[str]
 
     # Analysis pipeline scratch fields
     pdb_entry: Optional[dict]
@@ -42,6 +43,7 @@ class PEATState(TypedDict):
     gpt_summary: Optional[dict]
     structure_source: Optional[str]
     af_result: Optional[dict]
+    stabilization_result: Optional[dict]
 
     # Cross-turn caches — overwritten in place; persisted by checkpointer
     analyzed_pdb_ids: list
@@ -63,6 +65,7 @@ def initial_state() -> dict:
         "hpc_command": None,
         "job_id": None,
         "sequence": None,
+        "target_name": None,
         "pdb_entry": None,
         "uniprot_features": None,
         "m_csa_sites": None,
@@ -70,6 +73,7 @@ def initial_state() -> dict:
         "gpt_summary": None,
         "structure_source": None,
         "af_result": None,
+        "stabilization_result": None,
         "analyzed_pdb_ids": [],
         "hpc_jobs": {},
         "response_text": None,

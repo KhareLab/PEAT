@@ -18,9 +18,9 @@ def alphafold3(state: PEATState) -> dict:
     ssh_run(f"mkdir -p {cfg.remote_base}/{uniport_id}/af3/af_input", cfg.netid)
 
 
-    for file in os.listdir("uploaded_files"):
+    for file in os.listdir("data/uploaded_files"):
         if file.endswith(".fa") or file.endswith(".fasta"):
-            local_pdb_path = os.path.join("uploaded_files", file)
+            local_pdb_path = os.path.join("data/uploaded_files", file)
 
             with open(local_pdb_path, "r", newline=None) as f:
                 fasta_text = f.read()

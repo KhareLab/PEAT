@@ -19,6 +19,7 @@ def stabilization_workflow(state: PEATState) -> Command:
     target_name = state.get("target_name")
     output_dir = "output_stabilization"
     email = os.getenv("UNPAYWALL_EMAIL")  # Use the email from the environment variable
+    catalytic_residual= state.get("m_csa_sites")
     print(f"Target name: {target_name}, Sequence file: {sequence_file}, Output dir: {output_dir}, Email: {email}")
 
     missing = []
@@ -41,7 +42,7 @@ def stabilization_workflow(state: PEATState) -> Command:
     os.makedirs(output_dir, exist_ok=True)
 
     try:
-        result = run_full_pipeline(target_name, sequence_file, output_dir, email)
+        result = run_full_pipeline(target_name, sequence_file, output_dir, email, catalytic_residual)
     except Exception as e:
         return Command(
             update={"response_text": f"Stabilization workflow failed: {e}"},

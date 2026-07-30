@@ -1,6 +1,8 @@
 import requests
 import fitz  # PyMuPDF
 import re
+import os
+import json
 
 
 def get_pdb_data(pdb_id: str) -> dict:
@@ -60,16 +62,6 @@ def chunk_pdf_sections(pdf_path: str) -> list[str]:
     return sections
 
 
-def get_m_csa_active_sites(pdb_id: str) -> list[dict]:
-    """
-    Queries the M-CSA API for catalytic active site annotations.
-    """
-    url = f"https://www.ebi.ac.uk/thornton-srv/m-csa/rest/structure/{pdb_id.upper()}"
-    r = requests.get(url)
-    if r.ok:
-        return r.json().get("activeSites", [])
-    return []
-
 
 def fetch_uniprot_features(uniprot_id: str) -> dict:
     """
@@ -93,6 +85,86 @@ def fetch_uniprot_features(uniprot_id: str) -> dict:
             "proteinDescription": {},
             "genes": []
         }
+
+
+def annotate_uniprot(uniprot_id: str, output_dir: str) -> dict:
+    url = f"https://rest.uniprot.org/uniprotkb/{uniprot_id}.json"
+    r = requests.get(url, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+
+    # protein name
+    protein_desc = data.get("proteinDescription", {})
+    protein_name = (
+        protein_desc.get("recommendedName", {})
+        .get("fullName", {})
+        .get("value")
+    )
+
+    # organism
+    organism = data.get("organism", {}).get("scientificName")
+
+    # sequence length
+    seq_length = data.get("sequence", {}).get("length")
+
+    # function comments
+    functions = []
+    for comment in data.get("comments", []):
+        if comment.get("commentType") == "FUNCTION":
+            for text_obj in comment.get("texts", []):
+                functions.append(text_obj.get("value"))
+
+    # domains / regions / motifs / sites
+    features = []
+    for feat in data.get("features", []):
+        ftype = feat.get("type")
+        if ftype in ["Domain", "Region", "Motif", "Compositional bias", "Active site", "Binding site"]:
+            loc = feat.get("location", {})
+            start = loc.get("start", {}).get("value")
+            end = loc.get("end", {}).get("value")
+
+            features.append({
+                "type": ftype,
+                "description": feat.get("description"),
+                "start": start,
+                "end": end,
+            })
+
+    # PDB cross references
+    pdb_entries = []
+
+    for ref in data.get("uniProtKBCrossReferences", []):
+        if ref.get("database") == "PDB":
+
+            props = {p["key"]: p["value"] for p in ref.get("properties", [])}
+
+            res = props.get("Resolution")
+
+            pdb_entries.append({
+                "pdb_id": ref.get("id"),
+                "method": props.get("Method"),
+                "resolution": (
+                    float(res.replace(" A", "").replace("Å", ""))
+                    if res and res != "-"
+                    else None
+                ),
+                "chains": props.get("Chains"),
+            })
+    annotations= {
+        "uniprot_id": data.get("primaryAccession", uniprot_id),
+        "entry_name": data.get("uniProtkbId"),
+        "protein_name": protein_name,
+        "organism": organism,
+        "sequence_length": seq_length,
+        "function": functions,
+        "features": features,
+        "pdb_entries": pdb_entries,
+    }
+    with open(os.path.join(output_dir,f"{uniprot_id}_annotation.json"),"w") as f:
+        json.dump(annotations, f, indent=4)
+    
+    return annotations
+
 
 def get_pdb_id_from_sequence(sequence: str) -> str | None:
     # Clean sequence (in case it's in FASTA format)
@@ -128,3 +200,13 @@ def get_pdb_id_from_sequence(sequence: str) -> str | None:
     except Exception as e:
         print(f"Sequence → PDB search failed: {e}")
     return None
+
+def get_m_csa_active_sites(pdb_id: str) -> list[dict]:
+    """
+    Queries the M-CSA API for catalytic active site annotations.
+    """
+    url = f"https://www.ebi.ac.uk/thornton-srv/m-csa/rest/structure/{pdb_id.upper()}"
+    r = requests.get(url)
+    if r.ok:
+        return r.json().get("activeSites", [])
+    return []

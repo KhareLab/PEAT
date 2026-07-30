@@ -1,9 +1,10 @@
-from bio_tools import foldseek_search, alphafold_fetch
+from bio_tools import foldseek_search, alphafold_fetch, run_foldseek_amarel
 from af3_tools import run_af3_monomer, AF3Config
-from slurm_tools import local_to_remote_path, ssh_run, wait_for_slurm_job, get_slurm_job_id, get_current_job_ids
+from slurm_tools import local_to_remote_path, ssh_run, wait_for_slurm_job, get_slurm_job_id, get_current_job_ids, convert_cif_to_pdb
 from mpnn_tools import run_proteinmpnn, ProteinMPNNConfig, build_patch_mpnn_script_cmd, build_submit_mpnn_cmd, ensure_remote_mpnn_dirs, download_proteinmpnn_results, upload_pdb
-from homolog_tools import create_conservation_directoires, submit_hhblits_job, run_foldseek_pdb100
+from homolog_tools import create_conservation_directoires, submit_hhblits_job, run_foldseek_pdb100, cif_to_pdb_amarel
 from sequence_tools import run_ebi_blast
+from catalytic_tools import get_catalytic_residues_from_all
 from structure_tools import clean_pdb, check_missing_loops, pymol_align, get_aligned_residues, get_residual_mappings, download_pdb
 import subprocess
 import json
@@ -12,6 +13,7 @@ import shutil
 import requests
 import sys
 from pathlib import Path
+import time
 from data_fetch import  get_pdb_data, annotate_uniprot
 
 
@@ -39,7 +41,8 @@ def run_step_1(sequence_file: str, output_dir: str, email: str, target_name: str
     }
     print("Running Step 1: Homolog Search and Annotation...")
     print(f"Sequence file: {sequence_file}, Output dir: {output_dir}, Email: {email}")
-    uniprot_hits= run_ebi_blast(sequence_file, email)
+    #uniprot_hits= run_ebi_blast(sequence_file, email)
+    uniprot_hits=["A0A5Q5AD67"]
     result["uniprot_hits"]= uniprot_hits
 
     if uniprot_hits:
@@ -47,6 +50,7 @@ def run_step_1(sequence_file: str, output_dir: str, email: str, target_name: str
         print("Chosen uniprot id: ", result["chosen_uniprot_id"])
         result["annotations"]=annotate_uniprot(result["chosen_uniprot_id"], output_dir)
         pdb_entries = result["annotations"]["pdb_entries"]
+        print("Pdb entries: ", pdb_entries)
         if pdb_entries:
             best_pdb = min(pdb_entries, key=lambda x: x["resolution"] if x["resolution"] is not None else float("inf"))
             result["chosen_pdb_id"] = best_pdb["pdb_id"]
@@ -54,7 +58,11 @@ def run_step_1(sequence_file: str, output_dir: str, email: str, target_name: str
             result["structure_source"] = "pdb"
             pdb_data= get_pdb_data(result["chosen_pdb_id"])
             result["pdb_metadata"]=pdb_data
-            result['paper-DOI']=pdb_data["rcsb_primary_citation"]["pdbx_database_id_DOI"]
+            print("________________________________________")
+            print("pdb metadata: ", pdb_data)
+            print("________________________________________")
+            result["paper-DOI"] = pdb_data.get("rcsb_primary_citation", {}
+            ).get("pdbx_database_id_DOI")
             print("Paper DOIS: ",result['paper-DOI'])
             download_pdb(result["chosen_pdb_id"], output_dir)
             clean_pdb( pdb_path=os.path.join(output_dir,f"{result['chosen_pdb_id']}.pdb"), output_path=os.path.join(output_dir,f"clean_{result['chosen_pdb_id']}.pdb"), remove_ligands=True)
@@ -76,16 +84,20 @@ def run_step_1(sequence_file: str, output_dir: str, email: str, target_name: str
     except Exception:
         result["notes"].append("No AlphaFoldDB model found; run ColabFold.")
         cfg= AF3Config()
-        cfg.remote_base= f"/home/cd1061/{result['chosen_uniprot_id']}"
-        remote_pdb_path = local_to_remote_path(sequence_file, f"{cfg.remote_base}/{result['chosen_uniprot_id']}/af3", cfg.netid)
+        cfg.remote_base= f"/home/cd1061"
+        print(f"Remote base for AF3: {cfg.remote_base}")
+        print("Chosen uniprot id: ", result["chosen_uniprot_id"])
+        remote_pdb_path = local_to_remote_path(sequence_file, f"{cfg.remote_base}/{target_name}/af3", cfg.netid)
 
         run_af3_monomer(target_name=target_name, input_fasta_file=remote_pdb_path, download_type="top_model", cfg=cfg)
-        result["structure_source"] = "colabfold"
-        result["structure_path"] = f"{cfg.local_base}/{result['chosen_uniprot_id']}/af3/top_models/model.cif"
+        result["structure_source"] = "alphafold3"
+        result["structure_path"] = f"{cfg.local_base}/{target_name}/af3/top_models/design_1_model.cif"
         
+
     foldseek_hits = run_foldseek_pdb100(result["structure_path"],".")
     result["foldseek_hits"]= foldseek_hits
-    #print(foldseek_hits)
+    print(foldseek_hits)
+
     if foldseek_hits:
         for hit in foldseek_hits:
             curr=get_pdb_data(hit)
@@ -117,10 +129,10 @@ def run_step_1(sequence_file: str, output_dir: str, email: str, target_name: str
 
 
 
-def run_step2_conservation_pipeline(target_name: str, pdb_file: str):
+def run_step2_conservation_pipeline(target_name: str, pdb_file: str, catalytic_residues: list[str] = []):
     print("Running Step 2: Conservation Analysis...")
     create_conservation_directoires(ARAMEL_DIR, target_name)
-    result=submit_hhblits_job(ARAMEL_DIR, target_name, pdb_file)
+    result=submit_hhblits_job(ARAMEL_DIR, target_name, pdb_file, catalytic_residues=catalytic_residues)
 
     return result
 
@@ -157,8 +169,8 @@ def run_step3_mpnn_pipeline(
     remote_target_dir = f"{loc}/{target_name}"
     remote_mpnn_path = f"{remote_target_dir}/mpnn"
 
-    output_name = f"cpos_{constraint_level}_sol" if soluble else f"cpos_{constraint_level}"
-    local_constraint_name = f"{target_name}_cpos_{constraint_level}.jsonl"
+    output_name = f"design_cpos_{constraint_level}_sol" if soluble else f"design_cpos_{constraint_level}"
+    local_constraint_name = f"design_cpos_{constraint_level}.jsonl"
 
     cfg = ProteinMPNNConfig(
         netid="cd1061",
@@ -177,10 +189,15 @@ def run_step3_mpnn_pipeline(
 
     # 2. Upload the PDB into /mpnn/pdb/
     pdb_name = upload_pdb(pdb_file, remote_target_dir, cfg)
-
+    print("Remote target directory:", remote_target_dir)
+    if pdb_file.endswith(".cif"):
+            print
+            print(f"Converting CIF to PDB for file: {pdb_file}")
+            pdb_file = cif_to_pdb_amarel(f"{remote_target_dir}/mpnn/pdb/design_1_model.cif")
     # 3. Copy the conservation constraint JSONL into the mpnn directory
     # This handles both possible naming styles.
     constraint_candidates = [
+        f"{remote_target_dir}/conservation/output/design_cpos_{constraint_level}.jsonl",
         f"{remote_target_dir}/conservation/output/{target_name}_cpos_{constraint_level}.jsonl",
         f"{remote_target_dir}/conservation/output/cpos_{constraint_level}.jsonl",
         f"{remote_target_dir}/conservation/{target_name}_cpos_{constraint_level}.jsonl",
@@ -192,22 +209,29 @@ def run_step3_mpnn_pipeline(
     candidate_str = " ".join(constraint_candidates)
 
     copy_constraint_cmd = f"""
-cd {remote_target_dir}
-for f in {candidate_str}; do
-    if [ -f "$f" ]; then
-        cp "$f" {remote_mpnn_path}/{local_constraint_name}
-        echo "CONSTRAINT_FILE:$f"
-        exit 0
-    fi
-done
+    cd {remote_target_dir}
 
-echo "ERROR: Could not find cpos_{constraint_level}.jsonl constraint file."
-echo "Checked:"
-for f in {candidate_str}; do
-    echo "$f"
-done
-exit 2
-""".strip()
+    constraint_file=""
+
+    for f in {candidate_str}; do
+        if [ -f "$f" ]; then
+            constraint_file="$f"
+            break
+        fi
+    done
+
+    if [ -z "$constraint_file" ]; then
+        echo "ERROR: Could not find cpos_{constraint_level}.jsonl constraint file."
+        echo "Checked:"
+        for f in {candidate_str}; do
+            echo "$f"
+        done
+        exit 2
+    fi
+
+    cp "$constraint_file" {remote_mpnn_path}/{local_constraint_name}
+    echo "CONSTRAINT_FILE:$constraint_file"
+    """.strip()
 
     # 4. Patch run_mpnn.sh
     patch_cmd = build_patch_mpnn_script_cmd(remote_target_dir, cfg)
@@ -250,7 +274,7 @@ exit 2
 def run_step4_af3_pipeline(target_name: str, pdb_file: str, mpnn_output_dir: str):
     print("Running Step 4: AlphaFold3 Structure Prediction...")
 
-    remote_mpnn_fasta = mpnn_output_dir or f"/home/cd1061/{target_name}/mpnn/cpos_50/seqs/{target_name}.fa"
+    remote_mpnn_fasta = mpnn_output_dir or f"/home/cd1061/{target_name}/mpnn/cpos_50/seqs/design_1_model.fa"
 
     cfg = AF3Config()
     cfg.remote_base = f"/home/cd1061/{target_name}"
@@ -269,17 +293,20 @@ def run_step5_stability_analysis(target_name: str, pdb_file: str, mpnn_output_di
     return result
 
 
-def run_full_pipeline(target_name: str, sequence_file: str, output_dir: str, email: str):
+def run_full_pipeline(target_name: str, sequence_file: str, output_dir: str, email: str, catalyic_residues:str ):
     print("Running full stabilization pipeline...")
     step1_result= run_step_1(sequence_file, output_dir, email, target_name)
     pdb_file= step1_result["structure_path"]
     print("PDB file for step 2: ", pdb_file, os.path.exists(pdb_file) if pdb_file else False)
-    step2_result= run_step2_conservation_pipeline(target_name, pdb_file)
+    catalyic_residues= get_catalytic_residues_from_all( step1_result["chosen_uniprot_id"], None, True)
+    print("catalytic residues:", catalyic_residues)
+    
+    step2_result= run_step2_conservation_pipeline(step1_result["chosen_pdb_id"], pdb_file, catalytic_residues=catalyic_residues)
     amarel_fold= os.path.join(ARAMEL_DIR, target_name)
     print("Amarel fold path for step 3: ", amarel_fold, os.path.exists(amarel_fold))
     step3_result= run_step3_mpnn_pipeline(target_name, pdb_file)
 
-    mpnn_output_dir = f"/home/cd1061/{target_name}/mpnn/cpos_50/seqs/{target_name}.fa"
+    mpnn_output_dir = f"/home/cd1061/{target_name}/mpnn/design_cpos_50/seqs/design_1_model.fa"
     step4_result = run_step4_af3_pipeline(target_name, pdb_file, mpnn_output_dir)
     af3_output_dir= f"{target_name}_af3_output"
     #step5_result= run_step5_stability_analysis(target_name, pdb_file, mpnn_output_dir, af3_output_dir)

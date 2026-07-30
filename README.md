@@ -27,6 +27,9 @@ Everything goes through the chat box:
 | `check job 1234567` | Poll SLURM job status |
 | `download results 1234567` | Pull output files from Anvil |
 | `gmx ...` / `sbatch ...` / `squeue` | Run arbitrary HPC commands |
+| `af3 PsMan8a` | Run arbitrary HPC commands |
+| `Proteinmpnn 1HMW` | Run arbitrary HPC commands |
+| `Stabilizaton PsMan8a` | Run arbitrary HPC commands |
 | Anything else | LLM answer using full conversation context |
 
 ## Quick start
@@ -109,6 +112,9 @@ router node (regex parsers, priority order)
   ├── "foldseek <PDB>"                      →  foldseek
   ├── bare PDB ID (not yet analyzed)        →  analysis subgraph
   ├── protein sequence / FASTA              →  blast_search → analysis or llm_qa
+  ├── "af3 <PDB>"                           →  alphafold3
+  ├── "proteinmpnn <PDB>"                   →  proteinmpnn
+  ├── "stabilization <PDB>"                 →  stabilization protien redisgn workflow
   └── everything else                       →  llm_qa
 ```
 

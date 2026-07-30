@@ -153,19 +153,45 @@ def parse_sequence_input(text: str) -> str | None:
         return seq
     return None
 
-def parse_stabilization_request(text: str) -> str | None:
-    """Parse a request for stabilization analysis."""
-    m = re.search(
-        r'^\s*'
+def parse_stabilization_request(
+    text: str,
+) -> tuple[str, list[int]] | None:
+    """
+    Parse stabilization requests such as:
+
+        stabilization PsMan8a
+        stabilization PsMan8a 12, 34, 43, 456
+        stabilization for PsMan8a 12 34 43 456
+        run stabilization on PsMan8a active sites 12, 34, 43
+    """
+    m = re.fullmatch(
+        r'\s*'
         r'(?:(?:run|start|perform)\s+)?'
         r'stabili[sz]ation\s+'
-        r'(?:for\s+|on\s+)?'
-        r'([A-Za-z0-9_.-]+)'
-        r'\s*$',
+        r'(?:(?:for|on)\s+)?'
+        r'(?P<target>[A-Za-z0-9_.-]+)'
+        r'(?:\s+(?:active\s+sites?\s*)?'
+        r'(?P<sites>\d+(?:\s*,?\s*\d+)*))?'
+        r'\s*',
         text,
         re.IGNORECASE,
     )
-    return m.group(1) if m else None
+
+    if not m:
+        return None
+
+    target_name = m.group("target")
+    sites_text = m.group("sites")
+
+    if sites_text:
+        active_sites = [
+            int(site)
+            for site in re.findall(r"\d+", sites_text)
+        ]
+    else:
+        active_sites = []
+
+    return target_name, active_sites
 
 # ── Router node ───────────────────────────────────────────────────────────────
 
@@ -209,15 +235,23 @@ def router(state: PEATState) -> dict:
         print("Detected Foldseek request.")
         return {"intent": "foldseek", "pdb_id": fs_id}
 
-    stabilization_id = parse_stabilization_request(prompt)
-    if stabilization_id:
+    stabilization_request = parse_stabilization_request(prompt)
+    if stabilization_request:
+        target_name, active_sites = stabilization_request
+
         print("Detected stabilization request.")
-        print(f"Stabilization target: {stabilization_id}")
-        return {"intent": "stabilization", "target_name": stabilization_id, }
+        print(f"Stabilization target: {target_name}")
+        print(f"Active sites: {active_sites}")
+
+        return {
+            "intent": "stabilization",
+            "target_name": target_name,
+            "m_csa_sites": active_sites,
+        }
 
     mpnn_id = parse_proteinmpnn_request(prompt)
     if mpnn_id:
-        file_path = "uploaded_files"  # Adjust this path as needed
+        file_path = "data/uploaded_files"  # Adjust this path as needed
         if not os.path.exists(file_path):
             return {"response_text": f"ProteinMPNN request detected, but the required file path '{file_path}' does not exist."}
         print("Detected ProteinMPNN request.")

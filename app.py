@@ -98,9 +98,9 @@ with st.sidebar:
     )
 
 
-upoladed_file=st.file_uploader("Upload a PDB or FASTA file", type=["pdb","fa","fasta"])
+upoladed_file=st.file_uploader("Upload a PDB or FASTA file", type=["pdb","fa","fasta","pdf"])
 
-UPLOAD_DIR = "uploaded_files"
+UPLOAD_DIR = "data/uploaded_files"
 if upoladed_file is not None:
     with st.chat_message("user"):
         st.markdown(f"Uploaded PDB file: {upoladed_file.name}")

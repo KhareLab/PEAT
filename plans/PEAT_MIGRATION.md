@@ -165,10 +165,10 @@ destructive one is last.
 | 7 | Fresh clone of `main`, `./scripts/setup.sh && --check` | both pass | 2026-10-09: a bare fresh clone fails `--check` by name (`.venv is missing`); with `refcodes/` copied in per **B1** the full `setup.sh` passes — `designagent`, `radical.orbit`, `opentelemetry.sdk` import, rhapsody resolves to the checkout, the graph builds |
 | 8 | `.venv/bin/python -m pytest -q` in that clone | 417 passed, no network | 2026-10-09: **415 passed, 2 skipped**, 24 deselected, no network. Both skips name their reason (`the skill checkout is not beside this repo`), which is environmental to a scratch clone. 417 is the count with that checkout present |
 | 9 | `./scripts/dev.sh up --no-mpnn`, read the browser | tab, header, login card and empty state say PEAT | 2026-10-09, mechanically rather than by eye: built `dist/index.html` is `<title>PEAT</title>`, the bundle has the three frontend literals and **zero** of the old name, 45 jsdom tests pass, and the backend from the published tree answers `/openapi.json` with `info.title = PEAT`. The visual read of all four surfaces is still the by-hand tier (`frontend/e2e/BROWSER_TESTS.md`) |
-| 10 | Triage the 5 open issues | each closed or re-filed against the new code | |
+| 10 | Triage the 5 open issues | each closed or re-filed against the new code | **Left for a person.** Five issues, all describing the old Streamlit app; closing or re-filing them is a judgement about the lab's work |
 | 11 | `git push origin main` to rePEAT | its HEAD is the redacted tree, not `5161159` | 2026-10-09: done *early*, as a backup before anything destructive — `5161159..d02ee19 main -> main`. rePEAT's HEAD is the redacted tree |
-| 12 | `gh repo archive drawadiagram/rePEAT` | read-only; **only after rung 9** (§5) | |
-| 13 | `git remote set-url origin …/KhareLab/PEAT.git` | `git push` from this checkout reaches PEAT | |
+| 12 | `gh repo archive drawadiagram/rePEAT` | read-only; **only after rung 9** (§5) | 2026-10-09: `archived=true`, still public, HEAD `13a51c8` — the redacted tree *and* this record. Done last, after rung 9, so the fallback existed until it was not needed |
+| 13 | `git remote set-url origin …/KhareLab/PEAT.git` | `git push` from this checkout reaches PEAT | 2026-10-09: `origin` → `KhareLab/PEAT.git`, `main` tracks `origin/main` and is in sync. The `peat` remote added for rung 6 was removed again |
 
 Rung 2, from a clean scratch clone — **never from a working tree**, so a stray local ref cannot be
 pushed by accident:

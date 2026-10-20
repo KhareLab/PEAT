@@ -9,6 +9,8 @@ application that previously carried the name; that work is preserved on the
 `archive/*` branches. The Python package is still called `designagent`
 (`plans/BACKLOG.md` **B12**).
 
+Documentation: <https://kharelab.github.io/PEAT/> — built from `docs/`.
+
 ```
 ┌───────────────── frontend (Vite/React) ─────────────────┐
 │  chat pane  ◄── SSE ──┐            │  artifact pane      │

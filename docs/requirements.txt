@@ -1,0 +1,6 @@
+# Dependencies for the documentation site only (mkdocs.yml, docs/).
+# Deliberately separate from pyproject.toml: the docs build must not install
+# `designagent`, whose middleware comes from a gitignored refcodes/ and whose
+# only supported install path is scripts/setup.sh.
+mkdocs>=1.6,<2
+mkdocs-material>=9.5,<10

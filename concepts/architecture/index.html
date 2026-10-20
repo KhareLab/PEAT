@@ -1,0 +1,1261 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Protein Engineering Agent Toolkit — interactive protein redesign on your own LLM and HPC endpoints.">
+      
+      
+        <meta name="author" content="Khare Lab">
+      
+      
+        <link rel="canonical" href="https://kharelab.github.io/PEAT/concepts/architecture/">
+      
+      
+        <link rel="prev" href="../../getting-started/installation/">
+      
+      
+        <link rel="next" href="../../reference/dependencies/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Architecture - PEAT</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="light-green">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="PEAT" class="md-header__button md-logo" aria-label="PEAT" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            PEAT
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="light-green"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="light-green"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/KhareLab/PEAT" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    KhareLab/PEAT
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/dependencies/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="PEAT" class="md-nav__button md-logo" aria-label="PEAT" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    PEAT
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/KhareLab/PEAT" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    KhareLab/PEAT
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-web-frontend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The web frontend
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-agentic-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The agentic app
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The agentic app">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-protocol-node" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The protocol node
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-task-interfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The task interfaces
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-data-lake-and-what-is-shared" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The data lake, and what is shared
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The data lake, and what is shared">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#across-sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Across sessions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#across-a-group" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Across a group
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/dependencies/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependencies
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-web-frontend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The web frontend
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-agentic-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The agentic app
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The agentic app">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-protocol-node" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The protocol node
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-task-interfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The task interfaces
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-data-lake-and-what-is-shared" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The data lake, and what is shared
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The data lake, and what is shared">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#across-sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Across sessions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#across-a-group" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Across a group
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h1>
+<p>PEAT is four cooperating pieces: a <strong>web frontend</strong> that streams a conversation and renders what
+it produces, an <strong>agentic app</strong> that decides what to do and writes every user-visible sentence, a
+<strong>task interface</strong> layer that gets slow work off the event loop and onto the right substrate, and
+a <strong>data lake</strong> that remembers what happened after the session ends.</p>
+<p>They exist in that shape because of one constraint — <em>a chat must answer in milliseconds, a fold
+takes tens of seconds, and a cluster job takes hours.</em> Everything below is downstream of it.</p>
+<pre class="mermaid"><code>flowchart LR
+  B["browser"] &lt;--&gt;|SSE| A["app.py&lt;br/&gt;FastAPI"]
+  A --&gt; G["LangGraph loop&lt;br/&gt;6 nodes"]
+  G --&gt;|Deps| T["TaskManager"]
+  T --&gt; L["local"]
+  T --&gt; Q["query"]
+  T --&gt; H["hpc"]
+  G --&gt; D["DesignHistory&lt;br/&gt;Kuzu · SQLite · Parquet"]</code></pre>
+<h2 id="the-web-frontend">The web frontend<a class="headerlink" href="#the-web-frontend" title="Permanent link">&para;</a></h2>
+<p><code>frontend/</code> is a React 19 application built by Vite 6, with four runtime dependencies in total:
+<code>react</code>, <code>react-dom</code>, <code>marked</code> and <code>dompurify</code>. It is split into two panes.</p>
+<p>The <strong>chat pane</strong> holds the conversation, the live status lines a turn emits, and a <em>task chip</em>
+per unit of work. A chip names its interface whenever that interface is not <code>local</code>, so a
+ProteinMPNN task reads <code>hpc</code>, and expanding it shows a streaming log tail — which only the
+Orbit/PSI-J path can produce, because log streaming is a declared capability the local interfaces
+do not have. Under each reply there is a <strong>how this answer was made</strong> disclosure: the node that
+produced the text, the function inside it, and the per-node timings of the turn.</p>
+<p>The <strong>artifact pane</strong> renders what a round produces: an interactive structure view, the session
+summary as Markdown, the ensemble table, and a downloadable <code>.docx</code>. The viewer is
+<a href="https://molstar.org/">Mol*</a> — specifically <code>@rcsb/rcsb-molstar</code>, which is <strong>not</strong> an npm
+dependency: <code>frontend/src/artifacts/MolstarView.tsx</code> loads a pinned UMD build from a CDN at
+runtime and caches the loader on <code>window</code>.</p>
+<p>Two deliberate restrictions are worth knowing. Assistant text is model-influenced, so it is
+sanitized before it is rendered. And the visualization the agent produces is a <strong>JSON view spec</strong>
+that the frontend validates field by field, never generated JavaScript — shipping model-written
+JS into the page would let a prompt put code in the browser, so a bad generation degrades to a
+plain cartoon instead.</p>
+<h2 id="the-agentic-app">The agentic app<a class="headerlink" href="#the-agentic-app" title="Permanent link">&para;</a></h2>
+<p><code>backend/designagent/app.py</code> is a FastAPI service: login and session routes, a Server-Sent-Events
+chat endpoint, artifact and task routes, settings, and a health endpoint that reports which
+degraded modes are in effect. Behind it is a LangGraph loop of six nodes.</p>
+<table>
+<thead>
+<tr>
+<th>Node</th>
+<th>Does</th>
+<th>Writes to state</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Coordinator</strong></td>
+<td>Classifies the prompt, streams updates, answers from state</td>
+<td><code>intent</code>, <code>goal</code></td>
+</tr>
+<tr>
+<td><strong>Design Initializer</strong></td>
+<td>PDB, UniProt and literature lookups, concurrently</td>
+<td><code>reference_design</code></td>
+</tr>
+<tr>
+<td><strong>Redesign Orchestrator</strong></td>
+<td>Picks the success metric, builds and dispatches the worklist</td>
+<td><code>key_metric</code>, <code>worklist</code></td>
+</tr>
+<tr>
+<td><strong>Analyst</strong></td>
+<td>Scores returns, writes the lake, ranks, rebuilds the view</td>
+<td><code>lead_design</code>, <code>ensemble</code>, <code>molecular_visualization</code></td>
+</tr>
+<tr>
+<td><strong>Interpreter</strong></td>
+<td>Summarizes, flags related past designs, renders artifacts</td>
+<td><code>design_summary</code>, <code>artifacts</code></td>
+</tr>
+<tr>
+<td><strong>Protocol</strong></td>
+<td>Runs one stage of the enzyme-redesign cluster pipeline per turn</td>
+<td><code>protocol</code></td>
+</tr>
+</tbody>
+</table>
+<p>Five rules describe the loop more usefully than a call graph:</p>
+<ul>
+<li><strong>Routing is dynamic.</strong> A node returns <code>Command(goto=..., update=...)</code>, so the routing decision
+  and the state write are one atomic return; <code>START → coordinator</code> is the only static edge. A
+  chat turn ends immediately, a design request loops Orchestrator → Analyst until the key metric
+  stops improving or <code>max_rounds</code> is reached, then summarizes.</li>
+<li><strong>Nodes reach the outside only through <code>Deps</code>.</strong> Settings, the task manager, the design history
+  and the artifact store are injected (<code>graph/deps.py</code>); no node imports a store or an interface.
+  This is the reason the 417-test offline suite needs no network, no process pool and no
+  endpoint.</li>
+<li><strong>State carries no bulky payloads.</strong> LangGraph serializes a checkpoint every turn, so
+  coordinates go to a content-addressed blob and travel as a path. A test asserts that <code>ATOM</code>
+  records never appear in serialized state, because the regression is otherwise invisible —
+  nothing breaks, the checkpoint just grows every turn.</li>
+<li><strong>Only prose streams to the chat.</strong> Streaming is opt-in per call, and only the two user-facing
+  calls use it; the intent classifier's and round planner's JSON are explicitly suppressed, or
+  they would arrive in the assistant's bubble.</li>
+<li><strong>Every user-visible sentence is attributable.</strong> A node that authors text records a
+  <code>reply_source</code> such as <code>interpreter:_rule_based_summary</code> or <code>coordinator:llm</code> — a value that
+  greps straight to the function that wrote it. Without this, a reply reads identically whether a
+  rule or a model produced it.</li>
+</ul>
+<p>With no API key the loop still runs end to end: every node has a deterministic rule-based path,
+and the key improves classification, planning and the written summary rather than enabling them.
+When a key is present but rejected, the turn says so in its own reply instead of looking normal.</p>
+<h3 id="the-protocol-node">The protocol node<a class="headerlink" href="#the-protocol-node" title="Permanent link">&para;</a></h3>
+<p>The other five nodes serve a chat turn. <code>graph/nodes/protocol.py</code> serves a multi-day cluster
+pipeline — the enzyme-redesign protocol — as <strong>one stage per turn</strong>: nine stages from intake
+through conservation analysis, ProteinMPNN redesign, selection and AlphaFold3 to the report. It
+is the only node that answers the user every turn and never routes onward.</p>
+<p>The protocol has points where a run must stop and wait for a person, and there is no
+<code>interrupt()</code> anywhere in this codebase. <strong>The turn boundary is the checkpoint mechanism</strong>: a
+stage sets an <code>awaiting</code> key and returns, and the next message answers it. That has one visible
+consequence — while a campaign is waiting, the coordinator routes to the protocol node <em>before</em>
+it classifies intent at all, because answers like "liu", "310,364" and "go" would otherwise
+classify as chat and leave the campaign waiting forever. A short list of escape words is the way
+out.</p>
+<p>Progress is read from the filesystem, never from a task handle. Handles are in-memory, so a
+restarted server cannot re-attach to an in-flight job; the collect stage lists the output tree and
+reads the small summary files instead, which makes it idempotent and identical whether the
+submission was minutes or days ago. <strong>The data outlives the handle, so recovery is a re-fetch,
+not a re-attach.</strong></p>
+<p>Everything a chat message contributes — a target name, a UniProt id, domain bounds, catalytic
+residues, a cluster account name — ends up inside a <code>bash -lc</code> body and in paths the endpoint
+writes to under the site's allocation. The input validators therefore <strong>reject rather than
+sanitize</strong>, and the protocol's own settings are environment-only, never writable over HTTP, for
+the same reason.</p>
+<h2 id="the-task-interfaces">The task interfaces<a class="headerlink" href="#the-task-interfaces" title="Permanent link">&para;</a></h2>
+<p>Task duration is indeterminate, so every interface submits asynchronously and returns a handle
+carrying a future. <strong>Nothing in the graph awaits at submission time</strong>, and a <em>failed</em> submission
+becomes a settled FAILED handle rather than an exception — so callers have exactly one shape to
+handle and gathering results never raises.</p>
+<table>
+<thead>
+<tr>
+<th>Interface</th>
+<th>Backing</th>
+<th>Cancel</th>
+<th>Log stream</th>
+<th>Push events</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>local</code></td>
+<td>flowgentic → asyncflow → rhapsody <code>ConcurrentExecutionBackend</code> (process pool)</td>
+<td>yes</td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
+<td><code>query</code></td>
+<td><code>httpx</code> on the main event loop (REST retrieval)</td>
+<td>yes</td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
+<td><code>hpc</code> (Orbit)</td>
+<td><code>EndpointRuntime</code> with rhapsody and PSI/J plugins</td>
+<td>yes</td>
+<td>yes, by byte offset</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>hpc</code> (Globus)</td>
+<td><code>globus_compute_sdk.Executor</code></td>
+<td>only before start</td>
+<td>no</td>
+<td>no</td>
+</tr>
+</tbody>
+</table>
+<p>Capabilities are <strong>declared rather than assumed</strong>, because the two HPC backends genuinely differ.
+A catalog of fourteen tasks (<code>tasks/registry.py</code>) says which interface each one belongs to and
+what it produces; <code>TaskManager</code> routes a submission to the right interface, and under logins it
+routes <code>hpc</code> work to the endpoint belonging to the user whose turn it is.</p>
+<p>Three details make the remote path work and are not obvious from any single file:</p>
+<ul>
+<li><strong>A pool worker is handed its settings, not left to derive them.</strong> Task bodies call for settings
+  themselves and cache the answer for the worker's lifetime, so changing anything a worker reads —
+  the API key above all — requires a new pool, and therefore a rebuilt runtime.</li>
+<li><strong>Staging is in band.</strong> The broker forwards neither declared outputs nor stdin, so a spec that
+  declares inputs or outputs is rewritten into a <code>bash -lc</code> script: inputs are gzipped, base64'd
+  and split across argv, the real command's own chatter is pushed to stderr so stdout stays a
+  clean data channel, and each output comes back as a framed block with its size and SHA-256.
+  Framing is not optional — a login shell prints banners, and a stray <code>&gt;</code> line is a valid FASTA
+  header.</li>
+<li><strong>An HPC submission must carry a real job spec</strong>, or it degrades to <code>/bin/true</code>. The
+  orchestrator fills the executable, executor, account and queue from settings, and the resource
+  vocabulary is renamed into PSI/J's, which answers HTTP 500 on a field it does not recognize.</li>
+</ul>
+<p>Where no HPC endpoint is attached, <code>hpc</code> tasks fall back to their app-local equivalents. The
+substitution is <strong>labelled at the point it happens</strong> — <em>"no HPC endpoint was attached, so the job
+was never submitted"</em> — because an unlabelled fallback makes a heuristic round indistinguishable
+from a real one. Where a real run does happen, its provenance is <em>read</em> rather than asserted: the
+model name and git hash are lifted out of ProteinMPNN's own FASTA header, and a run that declares
+neither earns a caveat saying so.</p>
+<h2 id="the-data-lake-and-what-is-shared">The data lake, and what is shared<a class="headerlink" href="#the-data-lake-and-what-is-shared" title="Permanent link">&para;</a></h2>
+<p><code>backend/designagent/lake/</code> is a three-tier design history behind a single <code>DesignHistory</code>
+facade.</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Store</th>
+<th>Holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Kuzu, embedded graph</td>
+<td>raw outputs and provenance: <code>Campaign</code>, <code>Reference</code>, <code>Design</code>, <code>Task</code>, <code>Output</code>, <code>Structure</code>, joined by relations such as <code>DERIVED_FROM</code> and <code>PRODUCED</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>SQLite</td>
+<td>scores, per-round rankings, analyses</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Parquet plus a JSON manifest</td>
+<td>curated golden sets, staged for ML training behind explicit curation rules</td>
+</tr>
+</tbody>
+</table>
+<p>Bulky payloads — coordinates, FASTA — go to a content-addressed blob directory and are referenced
+by path from tier 1. Tiers 1 and 2 are written together so they cannot drift. Every lake write is
+individually guarded: a storage failure must not lose a round the user waited two minutes for, so
+ranking falls back to in-memory and the user is told in the summary's caveats.</p>
+<p>Two operational facts follow from Kuzu being an embedded database. It takes an <strong>exclusive file
+lock</strong>, so a second backend on the same data directory dies rather than degrading — and it sizes
+its buffer pool at roughly 80% of host RAM by default, which on a small VM is most of the
+machine, so there is an environment variable to cap it.</p>
+<h3 id="across-sessions">Across sessions<a class="headerlink" href="#across-sessions" title="Permanent link">&para;</a></h3>
+<p>This is the point of the lake. A finished round is not just a message in a transcript: designs,
+tasks, outputs and scores are filed with their provenance, and a later session reads them back.
+<code>DesignHistory.related_past_designs()</code> returns the best designs on the current metric <em>from other
+campaigns</em>, and the interpreter surfaces them in the summary. The session summary artifact prints
+the tasks a round ran, with their interface and final state, straight out of the graph store —
+which is how you tell, weeks later, whether a design came off a cluster or out of a rule table.</p>
+<h3 id="across-a-group">Across a group<a class="headerlink" href="#across-a-group" title="Permanent link">&para;</a></h3>
+<p>With <code>DESIGNAGENT_AUTH_ENABLED=true</code>, one deployment serves several people. What is private to a
+user is their account, their chat sessions — a session that is not yours returns 404, because
+whether it exists is also the owner's business — and their credentials: eight fields covering an
+Anthropic key and model and an Orbit broker, token, certificate, endpoint, account and queue.
+Credentials are stored as Fernet ciphertext with each value cryptographically bound to its user
+<em>and</em> its field, so a ciphertext copied to another row fails to decrypt rather than silently
+becoming someone else's key. They are validated by rejection, and a broker must appear on an
+operator-configured allow-list, because it is a host the server will dial and hand a token to.
+A plain user's baseline has every operator credential removed, so nobody falls through to the
+operator's key or allocation, and every path, shell and scheduler choice stays operator-only.</p>
+<p>What is <strong>shared, deliberately</strong>, is everything else: one design history, one checkpointer, one
+artifact store, for the whole deployment. Kuzu's exclusive lock rules out a data directory per
+user, and the cross-campaign read above is a feature for a lab working on related targets. The
+consequence must be stated plainly rather than discovered: <strong>on a shared deployment, one user's
+sessions can surface another user's designs.</strong></p>
+<div class="admonition warning">
+<p class="admonition-title">Current tenancy limits</p>
+<p>The Orbit broker is shared too, and every endpoint holds the broker token — so on a shared
+broker, any user can submit work as any other user. A deployment is therefore safe for one
+user, or for a group that trusts one another, and not for mutually untrusting tenants. One
+broker per user is specified in <code>plans/LINODE_DEPLOY.md</code> (Phase 3) and is not built. The
+remaining gaps left open by the current login implementation are recorded together in
+<code>plans/BACKLOG.md</code> (<em>What Phase 2's logins leave open</em>).</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/KhareLab/PEAT" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "search.share", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

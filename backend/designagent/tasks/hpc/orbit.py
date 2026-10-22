@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from typing import Any
 
 from ..base import Capabilities, LogChunk, TaskHandle, TaskSpec, TaskState, normalize_state
@@ -105,7 +106,7 @@ class OrbitInterface(RemoteWorkflowInterface):
     """Remote execution through an Orbit broker and endpoint."""
 
     name = "hpc"
-    capabilities = Capabilities(
+    _BASE_CAPABILITIES = Capabilities(
         supports_cancel=True,
         supports_log_stream=True,   # via the psij plugin's offset reads
         supports_push_events=True,  # via rhapsody/psij notifications
@@ -114,6 +115,25 @@ class OrbitInterface(RemoteWorkflowInterface):
         # `hpc/artifacts.py` for the protocol and its ceilings.
         supports_staging=True,
     )
+
+    @property
+    def capabilities(self) -> Capabilities:
+        """The base set, plus what *this* endpoint's plugins actually allow.
+
+        Every other interface declares its capabilities as a class constant,
+        because they do not vary. This one does: whether `kind="function"` work
+        can run depends on the endpoint having a rhapsody plugin, and Orbit
+        decides that by host role, not by what we ask for. `is_enabled` admits
+        rhapsody only on the `compute` and `standalone` roles -- on a login-node
+        gateway (the deployment `plans/AMAREL_ENDPOINT.md` §2 describes, and the
+        one upstream intends for a psij submitter) the veto is absolute and
+        naming the plugin does not lift it. So report the absence rather than
+        letting a submission discover it.
+        """
+        return replace(
+            self._BASE_CAPABILITIES,
+            supports_function_tasks=self._rhapsody is not None,
+        )
 
     def __init__(
         self,

@@ -74,6 +74,19 @@ async def test_connects_and_finds_the_endpoint(orbit):
 
 
 async def test_executable_task_runs_and_returns_output(orbit):
+    """Needs rhapsody, so it needs a host Orbit will load rhapsody on.
+
+    The dev stack's own host decides that: `is_enabled` admits the `compute`
+    and `standalone` roles only. On a VM or a laptop there is no batch system,
+    so the role is `standalone` and it loads; run the same `-m live` tier on an
+    HPC login node and the role is `login`, where it is vetoed (backlog D4).
+    """
+    if not orbit.capabilities.supports_function_tasks:
+        pytest.skip(
+            "the local stack's endpoint serves no rhapsody plugin: this host "
+            "is a login node, where Orbit's role gate vetoes it (D4)"
+        )
+
     spec = TaskSpec(
         name="echo",
         kind="function",

@@ -393,7 +393,7 @@ And the honest part up front: the middle column is the weak one. One host, a poo
   ], M + 0.25, 1.72, 11.8, 0.6, { fontSize: 17, valign: "middle" });
 
   const rows = [
-    ["Tasks return futures, never results", "Every interface's submit() places the work and returns a handle. Nothing in the graph awaits a task at submission time.", "tasks/base.py:159"],
+    ["Tasks return futures, never results", "Every interface's submit() places the work and returns a handle. Nothing in the graph awaits a task at submission time.", "tasks/base.py:166"],
     ["Task duration is not the interface's business", "The same handle covers a 40 ms REST call and a queued batch job. Only the capability flags differ.", "tasks/base.py:62"],
     ["Status is a stream, not a return value", "Nodes emit progress over LangGraph's custom channel; the manager fans task events onto the same SSE stream.", "graph/deps.py · app.py:437"],
     ["State holds references, not payloads", "Coordinates go to a content-addressed blob and travel as a path, because every checkpoint is serialized.", "orchestrator.py:292"],
@@ -955,7 +955,7 @@ And the bottom right is not contrived. ESM Atlas genuinely dropped one of six re
     '    async def result(self, handle)  -> Any',
     '    async def cancel(self, handle)  -> bool',
     '    async def close(self)           -> None',
-  ], M, 1.55, 5.5, 2.1, { anchor: "tasks/base.py:148–186  ·  TRIMMED", fs: 10.5 });
+  ], M, 1.55, 5.5, 2.1, { anchor: "tasks/base.py:155–193  ·  TRIMMED", fs: 10.5 });
 
   code(s, [
     '@dataclass(frozen=True)',
@@ -1064,7 +1064,7 @@ The state enum normalizes across vocabularies, because ORBIT and PSI/J each have
     '    future = asyncio.ensure_future(',
     '        _call(fn, spec, llm_credentials(spec.name)))',
     '    return self._handle(spec, future)',
-  ], M, 4.6, 6.1, 1.25, { anchor: "tasks/local.py:80–85  ·  VERBATIM", fs: 10 });
+  ], M, 4.6, 6.1, 1.25, { anchor: "tasks/local.py:81–86  ·  VERBATIM", fs: 10 });
 
   card(s, M + 6.4, 2.55, 6.43, 1.3, "Three constraints the pool imposes", [
     "Task bodies live at module level in tools/ — no closures over clients, or they will not pickle.",
@@ -1127,7 +1127,7 @@ And the red block is the first of the findings. That is verbatim flowgentic. The
     '    if self._loop is None or self._loop.is_closed():',
     '        return',
     '    self._loop.call_soon_threadsafe(fn, *args)',
-  ], M, 5.05, 5.9, 0.95, { anchor: "tasks/hpc/orbit.py:328–332  ·  VERBATIM", fs: 10 });
+  ], M, 5.05, 5.9, 0.95, { anchor: "tasks/hpc/orbit.py:348–352  ·  VERBATIM", fs: 10 });
 
   s.addShape(pres.shapes.RECTANGLE, { x: M + 6.2, y: 1.5, w: 6.63, h: 0.38,
     fill: { color: C.fail }, line: { color: C.fail } });
@@ -1144,14 +1144,14 @@ And the red block is the first of the findings. That is verbatim flowgentic. The
     '    merged = {**info, **{k: v for k, v in data.items()',
     '                         if v not in (None, "")}}',
   ], M + 6.2, 1.97, 6.63, 1.55,
-    { anchor: "tasks/hpc/orbit.py:353–366  ·  TRIMMED", fs: 10, fill: "3A1F1C" });
+    { anchor: "tasks/hpc/orbit.py:373–386  ·  TRIMMED", fs: 10, fill: "3A1F1C" });
   code(s, [
     'if state is TaskState.FAILED and not error:',
     '    error = (f"exit code {exit_code}" if exit_code not in (None, 0)',
     '             else (data.get("stderr")',
     '                   or handle.log_tail[-500:] or "job failed"))',
   ], M + 6.2, 3.65, 6.63, 0.82,
-    { anchor: "tasks/hpc/orbit.py:428–433  ·  TRIMMED", fs: 10, fill: "3A1F1C" });
+    { anchor: "tasks/hpc/orbit.py:448–453  ·  TRIMMED", fs: 10, fill: "3A1F1C" });
   text(s, "A completed task's result came back empty until the re-fetch. A job that exited 3 " +
     "reported no reason at all — only the code — so FAILED always synthesises an explanation.",
     M + 6.2, 4.6, 6.63, 0.55, { fontSize: 11, color: C.fail });

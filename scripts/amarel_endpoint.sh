@@ -17,7 +17,8 @@
 #   ORBIT_ENDPOINT_NAME    [amarel3] — the agent's DESIGNAGENT_ORBIT_ENDPOINT must match
 #   ORBIT_VENV             [~/orbit-venv]
 #   ORBIT_SRC              [~/radical.orbit] — used by `install` only
-#   ORBIT_PLUGINS          [psij,sysinfo] — the compute-node default set lacks psij (§1)
+#   ORBIT_PLUGINS          [psij,sysinfo] — narrower than the login-node default, which
+#                          already has psij; naming them drops staging, which nothing uses (§1)
 #   RADICAL_ORBIT_PSIJ_DIR [/scratch/$USER/orbit-psij]
 #
 # Cert and token resolve the way Orbit resolves them: $RADICAL_ORBIT_BROKER_CERT /

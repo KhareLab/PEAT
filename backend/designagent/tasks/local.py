@@ -56,6 +56,7 @@ class LocalTaskInterface(TaskInterface):
         supports_log_stream=False,
         supports_push_events=False,
         supports_staging=False,
+        supports_function_tasks=True,  # running a task body is the whole job
     )
 
     def __init__(self, wrap: Callable[[Callable], Callable] | None = None):
@@ -94,6 +95,7 @@ class QueryTaskInterface(TaskInterface):
         supports_log_stream=False,
         supports_push_events=False,
         supports_staging=False,
+        supports_function_tasks=True,
     )
 
     async def submit(self, spec: TaskSpec) -> TaskHandle:

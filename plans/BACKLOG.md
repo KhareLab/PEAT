@@ -8,7 +8,7 @@ Convention: **A** = correctness or honesty of a claim · **B** = developer exper
 **C** = upstream, in the middleware rather than here · **D** = known-unknown, needs investigation
 before it can be sized.
 
-Status as of 2026-10-09. A number is retired with its entry rather than reused, and the rest keep
+Status as of 2026-10-21. A number is retired with its entry rather than reused, and the rest keep
 theirs — the alternative renumbers every reference in the code, the tests and the plans each time
 something is fixed. Refer to issues by their title in commit messages all the same; a title survives
 a rewrite, and the first numbers were handed out before this rule.
@@ -363,6 +363,16 @@ endpoint, so both fail on Amarel for that reason alone. They need a remote base 
 example `DESIGNAGENT_REMOTE_TEST_DIR`, defaulting to `tmp_path` when `ORBIT_LOCAL`, with the files
 created and checked by jobs rather than by the test process.
 
+**Both tests passed on 2026-10-21, and the entry still stands.** Run from `amarel3` — the endpoint
+host — with `--basetemp=/scratch/$USER/...`, the jobs could see the paths and both passed
+(`AMAREL_ENDPOINT.md` rung 4b). That is a run recipe for one host, not the fix: `/scratch` is shared
+with the compute nodes while `/tmp` is node-local, and from the VM both tests still fail. The
+remote-base-directory change above is what makes the tier runnable from anywhere, so keep it.
+
+The **primary defect is untouched**: a missing `--chdir` still falls back to `/tmp` and reports
+success, and the guard line is still unwritten. Nothing in the 2026-10-21 run exercised a
+*nonexistent* directory — both tests `mkdir -p` their own.
+
 ---
 
 ### A21 · What Phase 2's logins leave open
@@ -454,6 +464,42 @@ first push to `KhareLab/PEAT`.
 **Risk if ignored:** the redaction is a point-in-time pass. `plans/` is written from live job output
 and quotes real paths, so the next deployment record re-introduces the same classes unless the
 scanner is run before each push.
+
+### A25 · Every job asks for a GPU by default, and a CPU partition rejects it
+`job_params` fills a GPU count into any spec that does not set one
+(`tasks/jobspec.py:54-60`), from `orbit_job_gpus` — which **defaults to 1**. On a CPU-only partition
+Slurm refuses the submission outright:
+
+```
+HTTP 500 — [amarel3/psij] psij submit '/bin/echo' on 'slurm'
+  — sbatch: error: Requested GRES option unsupported by configured SelectType plugin
+```
+
+Repro, 2026-10-21: `-m remote` against `amarel3` with `DESIGNAGENT_ORBIT_QUEUE=main` and the default
+`orbit_job_gpus`. Three of the eight tests failed this way — every one that builds its spec through
+`job_params`, which is every one except the two that hand-write a `resources` dict and the fetch test
+that runs on the `local` executor. `DESIGNAGENT_ORBIT_JOB_GPUS=0` makes all three pass
+(`AMAREL_ENDPOINT.md` rung 4b).
+
+**Why it matters beyond the tests:** every protocol compute spec goes through `job_params`
+(`tasks/jobspec.py:36-63`, reached from `protocol/specs.py`), so on a CPU queue each would be
+rejected the same way, at
+submission, before any walltime is spent. The conservation and MPNN stages are CPU work; only AF3
+wants a GPU, which is why `protocol_gpu_queue` exists as a separate setting. A whole campaign would
+fail at stage one against `queue=main`.
+
+**What makes it expensive:** the message names GRES and the SelectType plugin, never
+`orbit_job_gpus`, and it arrives as an HTTP 500 from the endpoint — so it reads as a broker or
+endpoint fault. The comment at `jobspec.py:50-53` already reasons carefully about *zero versus
+absent* (a site handed `gpu_cores_per_process: 0` may render `--gres=gpu:0`), so the care went into
+the wrong half: the problem is the non-zero default, not the encoding of zero.
+
+**Options, undecided.** Default `orbit_job_gpus` to 0, so a GPU is opt-in the way the account and
+queue are — cheapest, and matches "only a positive number is sent" in spirit. Or derive it from the
+queue the spec is headed for, which is the real coupling but needs a site table this repo does not
+have. Or leave the default and make the rejection legible, by having `_submit_job` recognise a GRES
+rejection and name the setting. Measure first: nothing yet shows whether a GPU partition would
+*reject* a job that asks for none, which would argue for keeping a non-zero default somewhere.
 
 ---
 
@@ -829,6 +875,22 @@ code on `amarel3`, not run — the venv does not exist yet. Repro: `pytest -m li
 then again under `srun`, where it should pass. If confirmed, the test wants a skip naming the role
 rather than a failure.
 
+**Confirmed and fixed, 2026-10-21.** `-m remote` from `amarel3` failed
+`test_a_rhapsody_task_runs_at_the_far_end` with exactly that message, so the gate is real and not
+just a reading of the code. Both tests now skip on `not capabilities.supports_function_tasks`, a new
+`Capabilities` field that `OrbitInterface` resolves from the live endpoint's plugin set rather than
+declaring as a class constant (`tasks/hpc/orbit.py`). The `-m remote` tier is **7 passed, 1 skipped**
+on a login-node endpoint.
+
+Worth recording because it changes how the entry reads: the veto is **absolute**, not a default.
+`is_enabled` is checked before instantiation, so `-p rhapsody` on a login node is refused too — the
+reason upstream gives is that Dragon's launcher raises outside an allocation, and
+`radical-orbit-endpoint-wrapper.sh` re-implements the same login-node test in shell. `psij` is the
+deliberate opposite, with `is_enabled` returning `True` unconditionally: "batch system access
+matters, not the participant role". So this was never a thing to work around — a login-node gateway
+serving psij alone is the deployment Orbit intends (`AMAREL_ENDPOINT.md` §2, re-verified against
+`c7ede0c`).
+
 The deployment ladder avoids it: `plans/AMAREL_ENDPOINT.md` runs rungs 1–2 on the Linode VM, which
 has no batch system, so the role is `standalone` and rhapsody loads.
 
@@ -842,6 +904,37 @@ came and went without the measurement — its jobs printed a few lines each — 
 rung 5. Repro: a job that stages out a file of known size (the `-m live` staging tests are the
 template), timed end to end. If it is slow, the protocol's large outputs (AF3 models) should stay in `$PROJ` and
 come back only as summaries — which `af3_collect` already does.
+
+### D6 · Closing the Orbit interface hangs for five minutes after a job-heavy run
+Every `-m remote` run that actually completes jobs spends **about five minutes past the last
+assertion** before the process exits. Measured 2026-10-21/22 on `amarel3`: pytest reported
+`7 passed, 1 skipped … in 439.93s`, and the process did not exit until 00:17:27 — the log's own
+timestamps put ~5 minutes between the two. The run prints, in order:
+
+```
+RuntimeWarning: The executor did not finishing joining its threads within 300 seconds.
+Task was destroyed but it is pending!
+task: <Task pending ... coro=<EndpointRuntime._call() running at .../orbit/runtime.py:859>>   (x5)
+```
+
+300 seconds is exactly the warning's threshold, so the five minutes *is* the executor join timing
+out, and the five abandoned tasks are `EndpointRuntime._call()` coroutines still waiting on a reply
+future when the loop is torn down. Five is suggestive: it is the number of Slurm jobs the run
+submitted, so the likely shape is one orphaned call per job — a poll or status request whose reply
+never arrived, or arrived after we stopped listening.
+
+**Why it is not just noise:** `OrbitInterface.close()` is what `Runtime.reconfigure` and app
+shutdown call. If the same five minutes is paid there, a settings change that rebuilds the Orbit
+interface would stall the server, and nothing in the offline suite can see it — every local test
+uses an in-process manager.
+
+**Not caused by the capability change:** it appears in the 2026-10-21 `JOB_GPUS=0` run that predates
+it, and is absent from the first run only because three of those tests failed at submission and so
+never polled.
+
+**Repro:** `-m remote` from `amarel3` with `DESIGNAGENT_ORBIT_JOB_GPUS=0`, timed end to end; compare
+pytest's own duration against wall-clock process exit. Then instrument `close()` (`tasks/hpc/orbit.py`)
+to log before and after each client's teardown, to find whether the wait is ours or Orbit's.
 
 ---
 

@@ -65,6 +65,13 @@ class Capabilities:
     supports_log_stream: bool = False
     supports_push_events: bool = False
     supports_staging: bool = False
+    # Whether `kind="function"`/`"executable"` work can run at all. False on an
+    # Orbit endpoint that serves no rhapsody plugin, which is the *correct*
+    # state for a login-node gateway: Orbit gates rhapsody to the `compute` and
+    # `standalone` host roles on purpose, and the veto is not overridable by
+    # naming the plugin. Unlike the fields above this one is not fixed per
+    # interface class -- `OrbitInterface` resolves it from the live endpoint.
+    supports_function_tasks: bool = False
 
 
 @dataclass

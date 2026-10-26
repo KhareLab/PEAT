@@ -48,6 +48,7 @@ from ...protocol.trim import trim_signal_peptide
 from ...tasks.base import TaskSpec
 from ...tasks.jobspec import batch_timeout, job_params
 from ...tools.proteinmpnn import variants_from_mpnn_fasta
+from ..approval import permit_scope, request_approval, submission_permission
 from ..deps import Deps, status
 from ..state import DesignState, last_user_text
 
@@ -1003,20 +1004,33 @@ def make_protocol(deps: Deps):
 
         awaiting = pstate.get("awaiting", "")
         try:
+            outcome = None
             if awaiting:
                 outcome = ANSWERS[awaiting](ctx)
                 pstate.update(outcome.patch)
                 pstate["awaiting"] = ""
-                # An answer names the next stage; run it in the same turn so the
-                # user's reply does something rather than only being accepted.
                 if outcome.stage:
                     pstate["stage"] = outcome.stage
-                    ctx.pstate = pstate
-                    followup = await STAGES[outcome.stage](ctx)
-                    outcome = _merge(outcome, followup)
+                stage = outcome.stage
             else:
                 stage = pstate.get("stage") or "intake"
-                outcome = await STAGES[stage](ctx)
+            if stage:
+                prepared = {**state, "protocol": pstate}
+                needs_approval = (
+                    submission_permission.get() is not None
+                    and stage not in ("intake", "done")
+                    and unavailable(ctx) is None
+                )
+                if needs_approval:
+                    waiting = request_approval(deps, prepared, "protocol", stage)
+                    if waiting:
+                        waiting.update["protocol"] = pstate
+                        return waiting
+                    with permit_scope(deps, prepared, "protocol", stage):
+                        followup = await STAGES[stage](ctx)
+                else:
+                    followup = await STAGES[stage](ctx)
+                outcome = _merge(outcome, followup) if outcome else followup
         except InvalidInput as exc:
             # A refusal is the answer: keep the checkpoint open and say why.
             return Command(

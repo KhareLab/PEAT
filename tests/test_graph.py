@@ -6,6 +6,9 @@ registry, which is also how the task layer is meant to be substituted.
 
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
+
 import pytest
 from designagent.graph.build import build_graph
 from designagent.graph.nodes.coordinator import classify_rules, describe_state
@@ -15,6 +18,29 @@ from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import SecretStr
 
 from tests.conftest import REF_SEQ
+
+
+@pytest.fixture
+def model_reply(monkeypatch, deps):
+    """Drive the real completion/validation path with provider text, offline."""
+    from designagent import llm
+
+    replies = {"classification": {}, "plan": {}}
+
+    class Model:
+        async def ainvoke(self, messages):
+            system = messages[0]["content"]
+            if "You route a protein-design" in system:
+                content = json.dumps(replies["classification"])
+            elif "You plan one round" in system:
+                content = json.dumps(replies["plan"])
+            else:
+                content = "Model answer about this session."
+            return SimpleNamespace(content=content)
+
+    deps.settings = deps.settings.model_copy(update={"anthropic_api_key": SecretStr("fake-key")})
+    monkeypatch.setattr(llm, "build_llm", lambda *args, **kwargs: Model())
+    return replies
 
 
 @pytest.fixture
@@ -217,6 +243,151 @@ async def test_design_loop_produces_lead_ensemble_and_artifacts(app, stub_tools,
 async def test_explicit_mutations_are_applied(app, stub_tools):
     out = await _send(app, "redesign 1UBQ applying T55V")
     assert out["lead_design"]["mutations"] == ["T55V"]
+
+
+@pytest.mark.parametrize("decision", [
+    {"intent": "chat", "goal": 42},
+    {"intent": "chat", "pdb_id": {"id": "1UBQ"}},
+    {"intent": "design", "mutations": "T55V"},
+    {"intent": "design", "mutations": ["not-a-mutation"]},
+    {"intent": "initialize", "uniprot_id": "../../private"},
+    {"intent": "execute_shell"},
+])
+async def test_invalid_model_decision_falls_back_visibly(deps, model_reply, decision):
+    from designagent.graph.nodes.coordinator import make_coordinator
+
+    model_reply["classification"] = decision
+    out = await make_coordinator(deps)({
+        **new_state("s"), "messages": [{"role": "user", "content": "hello"}],
+    })
+
+    assert out.goto == "__end__"
+    assert out.update["intent"] == "chat"
+    assert out.update["requested_mutations"] == []
+    assert out.update["target_hints"] == {}
+    assert any("expected schema" in warning for warning in out.update["warnings"])
+    assert "expected schema" in out.update["messages"][0]["content"]
+
+
+@pytest.mark.parametrize("plan", [
+    {"tasks": ["run_chemgraph"]},
+    {"tasks": [{"task": "execute_shell"}]},
+    {"tasks": [{"task": "proteinmpnn"}]},
+    {"key_metric": {"name": "invented_measurement"}},
+    {"key_metric": {"name": "plddt", "direction": "min"}},
+    {"key_metric": {"name": "plddt", "target": float("inf")}},
+    {"n_variants": True},
+    {"n_variants": 1000000},
+])
+async def test_invalid_model_plan_runs_safe_fallback(deps, stub_tools, model_reply, plan):
+    from designagent.graph.nodes.orchestrator import make_orchestrator
+
+    model_reply["plan"] = plan
+    out = await make_orchestrator(deps)({
+        **new_state("s"), "goal": "improve solubility",
+        "reference_design": {"sequence": REF_SEQ},
+    })
+
+    assert out.goto == "analyst"
+    assert out.update["key_metric"]["name"] == "mean_hydropathy"
+    assert out.update["key_metric"]["direction"] == "min"
+    assert out.update["pending_results"]["variants"]
+    assert {item["task"] for item in out.update["worklist"]} <= {
+        "propose_variants", "fold_sequence",
+    }
+    assert any("expected schema" in warning for warning in out.update["warnings"])
+
+
+async def test_valid_model_decision_and_plan_reach_requested_tool(
+    app, deps, stub_tools, model_reply,
+):
+    deps.settings = deps.settings.model_copy(update={"max_rounds": 1})
+    model_reply["classification"] = {
+        "intent": "design", "goal": "redesign 1UBQ applying T55V",
+        "pdb_id": "1ubq", "uniprot_id": None, "mutations": ["t55v"],
+    }
+    model_reply["plan"] = {
+        "key_metric": {"name": "sequence_identity", "direction": "max", "target": 0.9},
+        "tasks": [{"task": "apply_mutations", "why": "The user named a mutation."}],
+        "n_variants": 2,
+    }
+
+    out = await _send(app, "redesign 1UBQ applying T55V")
+
+    assert out["target_hints"] == {"pdb_id": "1UBQ"}
+    assert out["lead_design"]["mutations"] == ["T55V"]
+    assert out["key_metric"]["name"] == "sequence_identity"
+    assert out["reply_source"] == "interpreter:llm"
+    assert not any("expected schema" in warning for warning in out.get("warnings", []))
+
+
+async def test_new_design_request_clears_previous_mutations_and_hints(app, stub_tools):
+    first = await _send(app, "redesign 1UBQ applying T55V")
+    assert first["requested_mutations"] == ["T55V"]
+    assert first["target_hints"] == {"pdb_id": "1UBQ"}
+
+    second = await _send(app, "improve solubility")
+
+    assert second["requested_mutations"] == []
+    assert second["target_hints"] == {}
+    records = second["pending_results"]
+    assert not records  # the analyst consumed a complete round
+    assert second["ensemble"]
+    assert second["round"] > first["round"]
+
+
+@pytest.mark.parametrize("target", ["6B5X", "P12345"])
+async def test_conflicting_target_starts_no_tasks(app, deps, stub_tools, fake_hpc, target):
+    loaded = await _send(app, "load 1UBQ")
+    before = len(deps.tasks.snapshot())
+    out = await _send(app, f"redesign {target} applying T55V")
+
+    assert out["reply_source"] == "coordinator:target_conflict"
+    assert "Start a new session" in out["messages"][-1].content
+    assert out["reference_design"] == loaded["reference_design"]
+    assert not out["requested_mutations"]
+    assert len(deps.tasks.snapshot()) == before
+    assert not fake_hpc.submitted
+
+
+@pytest.mark.parametrize("target", ["1UBQ", "P0CG48"])
+async def test_matching_loaded_target_can_still_be_redesigned(app, stub_tools, target):
+    await _send(app, "load 1UBQ")
+    out = await _send(app, f"redesign {target} to improve solubility")
+
+    assert out["reference_design"]["pdb_id"] == "1UBQ"
+    assert out["ensemble"]
+    assert out["reply_source"] != "coordinator:target_conflict"
+
+
+@pytest.mark.parametrize("failure_at", ["construction", "invocation"])
+async def test_provider_failure_is_visible_without_persisting_its_body(
+    app, deps, monkeypatch, caplog, failure_at,
+):
+    from designagent import llm
+
+    deps.settings = deps.settings.model_copy(update={"anthropic_api_key": SecretStr("fake-key")})
+    private = "synthetic-private-provider-request-body"
+
+    def unavailable(*args, **kwargs):
+        raise RuntimeError(f"authentication_error: invalid x-api-key fake-key; {private}")
+
+    class Model:
+        async def ainvoke(self, *args, **kwargs):
+            unavailable()
+
+    builder = unavailable if failure_at == "construction" else lambda *a, **kw: Model()
+    monkeypatch.setattr(llm, "build_llm", builder)
+    out = await _send(app, "hello")
+    saved = await app.aget_state(_config())
+
+    assert out["reply_source"] == "coordinator:describe_state"
+    assert out["messages"][-1].content
+    assert any("the API key was rejected" in warning for warning in out["warnings"])
+    assert "the API key was rejected" in out["messages"][-1].content
+    public = repr(out) + repr(saved) + caplog.text + deps.last_llm_error
+    assert private not in public
+    assert "fake-key" not in public
 
 
 async def test_round_budget_is_respected(app, stub_tools, deps):
@@ -537,7 +708,10 @@ def fake_hpc(deps):
 
 
 async def test_a_real_mpnn_job_produces_ranked_designs(app, stub_tools, deps, fake_hpc):
-    out = await _send(app, "redesign 1UBQ to improve thermostability")
+    waiting = await _send(app, "redesign 1UBQ to improve thermostability")
+    assert waiting["hpc_pending"]
+    assert not fake_hpc.submitted
+    out = await _send(app, "approve hpc")
 
     assert out["ensemble"], "the round produced no designs"
     sources = {d.get("provenance", {}).get("source") for d in out["ensemble"]}
@@ -554,6 +728,7 @@ async def test_a_real_mpnn_job_produces_ranked_designs(app, stub_tools, deps, fa
 async def test_the_mpnn_task_is_recorded_as_hpc_in_the_ledger(app, stub_tools, deps, fake_hpc):
     """The row this whole change exists to make true."""
     await _send(app, "redesign 1UBQ to improve thermostability")
+    await _send(app, "approve hpc")
     tasks = deps.history.graph.tasks_for_campaign("s1")
     mpnn = [t for t in tasks if t["name"] == "proteinmpnn"]
     assert mpnn, [t["name"] for t in tasks]
@@ -565,7 +740,8 @@ async def test_the_staged_fasta_is_not_carried_in_state(app, stub_tools, deps, f
     """Same rule as coordinates: a round of sequences travels by blob path."""
     import json
 
-    out = await _send(app, "redesign 1UBQ to improve thermostability")
+    await _send(app, "redesign 1UBQ to improve thermostability")
+    out = await _send(app, "approve hpc")
     blob = json.dumps(out, default=str)
     assert ">T=" not in blob, "FASTA records leaked into state"
     assert "ORBIT_ARTIFACT" not in blob, "framing leaked into state"
@@ -574,7 +750,8 @@ async def test_the_staged_fasta_is_not_carried_in_state(app, stub_tools, deps, f
 async def test_unreadable_mpnn_output_falls_back_and_says_so(app, stub_tools, deps, fake_hpc):
     """A round the user waited on must not die silently."""
     fake_hpc.stdout = "ProteinMPNN: CUDA out of memory\n"
-    out = await _send(app, "redesign 1UBQ to improve thermostability")
+    await _send(app, "redesign 1UBQ to improve thermostability")
+    out = await _send(app, "approve hpc")
 
     assert out["ensemble"], "the round should survive on the heuristic"
     sources = {d.get("provenance", {}).get("source") for d in out["ensemble"]}
@@ -588,5 +765,6 @@ async def test_unreadable_mpnn_output_falls_back_and_says_so(app, stub_tools, de
 async def test_output_with_no_model_name_is_flagged(app, stub_tools, deps, fake_hpc):
     """Provenance is read, not assumed, so a run that cannot say is reported."""
     fake_hpc.stdout = _mpnn_stdout(model="")
-    out = await _send(app, "redesign 1UBQ to improve thermostability")
+    await _send(app, "redesign 1UBQ to improve thermostability")
+    out = await _send(app, "approve hpc")
     assert any("declared no model name" in w for w in out["warnings"]), out["warnings"]

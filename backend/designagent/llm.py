@@ -19,6 +19,8 @@ import re
 from collections.abc import Callable, Sequence
 from typing import Any
 
+from pydantic import BaseModel, ValidationError
+
 from .config import Settings, get_settings
 
 log = logging.getLogger(__name__)
@@ -106,19 +108,20 @@ async def complete(
     defaults to False so a new call site cannot leak internal JSON into the
     conversation by omission.
     """
-    llm = build_llm(settings, stream=stream, **kwargs)
-    if llm is None:
-        if on_fallback:
-            on_fallback(NO_KEY)
-        return None
     try:
+        llm = build_llm(settings, stream=stream, **kwargs)
+        if llm is None:
+            if on_fallback:
+                on_fallback(NO_KEY)
+            return None
         resp = await llm.ainvoke(
             [{"role": "system", "content": system}, {"role": "user", "content": user}]
         )
     except Exception as exc:  # the agent must degrade, not crash
-        log.warning("LLM call failed, falling back to rules: %s", exc)
+        reason = describe_error(exc)
+        log.warning("LLM call failed, falling back to rules: %s", reason)
         if on_fallback:
-            on_fallback(describe_error(exc))
+            on_fallback(reason)
         return None
     return _text_of(resp)
 
@@ -129,6 +132,7 @@ async def complete_json(
     *,
     settings: Settings | None = None,
     on_fallback: Fallback | None = None,
+    schema: type[BaseModel] | None = None,
     **kwargs: Any,
 ) -> dict | None:
     """Completion parsed as a JSON object, or None."""
@@ -142,6 +146,13 @@ async def complete_json(
     if raw is None:
         return None
     parsed = extract_json(raw)
+    if parsed is not None and schema is not None:
+        try:
+            return schema.model_validate(parsed).model_dump(exclude_none=True)
+        except ValidationError:
+            if on_fallback:
+                on_fallback("the model's reply did not match the expected schema")
+            return None
     if parsed is None and on_fallback:
         on_fallback("the model's reply was not JSON")
     return parsed
@@ -150,8 +161,8 @@ async def complete_json(
 def describe_error(exc: BaseException) -> str:
     """A short reason, classified enough to be actionable.
 
-    The provider's own message is included but truncated: it is not our text, it
-    can be long, and it is the one place an echoed request body could surface.
+    Provider messages can echo credentials or request bodies. Only the fixed
+    classification may reach logs, state, health responses or checkpoints.
     """
     text = str(exc).strip() or exc.__class__.__name__
     lowered = text.lower()
@@ -165,7 +176,7 @@ def describe_error(exc: BaseException) -> str:
         kind = "the request timed out"
     else:
         kind = "the LLM call failed"
-    return f"{kind}: {text[:200]}"
+    return kind
 
 
 def extract_json(raw: str) -> dict | None:

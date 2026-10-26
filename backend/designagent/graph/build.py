@@ -25,6 +25,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 
 from . import trace as trace_mod
+from .approval import guard_node
 from .deps import Deps
 from .nodes.analyst import make_analyst
 from .nodes.coordinator import make_coordinator
@@ -162,7 +163,7 @@ def build_graph(
             name,
             # Traced inside the flowgentic wrapper, so the timing is the node
             # body's own and not the scheduler's.
-            wrap_node(integration, traced(name, factory(deps))),
+            wrap_node(integration, traced(name, guard_node(name, factory(deps), deps))),
             destinations=destinations[name],
         )
 

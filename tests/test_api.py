@@ -87,6 +87,42 @@ def test_chat_rejects_empty_message(client):
     assert client.post("/api/chat", json={"message": ""}).status_code == 422
 
 
+def test_overlapping_turns_cannot_consume_one_sessions_approval_twice(client, monkeypatch):
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    entered, release = Event(), Event()
+
+    class PausedGraph:
+        async def astream(self, payload, **kwargs):
+            if payload["session_id"] == "locked":
+                entered.set()
+                assert await asyncio.to_thread(release.wait, 10)
+            yield "updates", {"coordinator": {"messages": []}}
+
+    monkeypatch.setattr(client.runtime, "app", PausedGraph())
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        first = pool.submit(
+            client.post, "/api/chat", json={"message": "approve hpc", "session_id": "locked"}
+        )
+        try:
+            assert entered.wait(10)
+            refused = client.post(
+                "/api/chat", json={"message": "approve hpc", "session_id": "locked"}
+            )
+            assert refused.status_code == 409
+            other = client.post("/api/chat", json={"message": "hello", "session_id": "other"})
+            assert other.status_code == 200
+        finally:
+            release.set()
+        assert first.result(timeout=10).status_code == 200
+    assert client.runtime.active_chats == set()
+    assert client.post(
+        "/api/chat", json={"message": "hello", "session_id": "locked"}
+    ).status_code == 200
+
+
 # --- session restore -------------------------------------------------------
 
 

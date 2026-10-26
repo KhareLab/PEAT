@@ -15,13 +15,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable
 
 from ..context import current_turn
 from ..lake.store import DesignHistory
-from .base import TaskHandle, TaskInterface, TaskSpec, TaskState
+from .base import TaskHandle, TaskInterface, TaskSpec, TaskState, new_task_id
 from .hpc.base import drain_logs
 from .local import LocalTaskInterface, QueryTaskInterface
 from .registry import CATALOG
@@ -133,6 +132,11 @@ class TaskManager:
     ) -> TaskHandle:
         name, interface = self.interface_for(spec)
         try:
+            from ..graph.approval import submission_permission
+
+            permission = submission_permission.get()
+            if name == "hpc" and permission is not None and not permission(spec):
+                raise PermissionError("HPC submission requires approval of the current workflow")
             handle = await interface.submit(spec)
         except Exception as exc:
             log.warning("submitting %s failed: %s", spec.name, exc)
@@ -142,7 +146,7 @@ class TaskManager:
             future: asyncio.Future = loop.create_future()
             future.set_exception(exc)
             handle = TaskHandle(
-                id=f"{spec.name}-rejected-{int(time.time() * 1000)}",
+                id=new_task_id(f"{spec.name}-rejected"),
                 interface=name,
                 spec=spec,
                 future=future,

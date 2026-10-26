@@ -12,12 +12,13 @@ import re
 from typing import Any
 
 from langgraph.types import Command
+from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
 
 from ...llm import complete, complete_json
 from ...tools.pdb import find_pdb_ids
 from ...tools.uniprot import find_accessions
 from ..deps import Deps, llm_caveat, status
-from ..state import DesignState, last_user_text
+from ..state import DesignState, Intent, last_user_text
 
 log = logging.getLogger(__name__)
 
@@ -87,6 +88,36 @@ INTERROGATIVE = (
     "list",
 )
 MUTATION_RE = re.compile(r"\b([ACDEFGHIKLMNPQRSTVWY]\d{1,4}[ACDEFGHIKLMNPQRSTVWY])\b")
+
+
+class RoutingDecision(BaseModel):
+    model_config = ConfigDict(strict=True)
+
+    intent: Intent
+    goal: str | None = None
+    pdb_id: str | None = None
+    uniprot_id: str | None = None
+    mutations: list[str] | None = None
+
+    @field_validator("pdb_id", "uniprot_id")
+    @classmethod
+    def identifier(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if not value:
+            return value
+        value = value.strip().upper()
+        find = find_pdb_ids if info.field_name == "pdb_id" else find_accessions
+        if find(value) != [value]:
+            raise ValueError("expected a single protein identifier")
+        return value
+
+    @field_validator("mutations")
+    @classmethod
+    def mutation_list(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return value
+        if any(MUTATION_RE.fullmatch(m.upper()) is None for m in value):
+            raise ValueError("expected mutations such as A42V")
+        return [m.upper() for m in value]
 
 
 def _has_word(text: str, words: tuple[str, ...]) -> bool:
@@ -286,6 +317,7 @@ def make_coordinator(deps: Deps):
                 f"Session state:\n{state_digest(state)}\n\nUser message:\n{text}",
                 settings=deps.settings,
                 on_fallback=llm_caveat(deps, caveats),
+                schema=RoutingDecision,
                 max_tokens=600,
             )
         if not decision or "intent" not in decision:
@@ -312,7 +344,27 @@ def make_coordinator(deps: Deps):
                 else "chat"
             )
 
-        update: dict[str, Any] = {"intent": intent}
+        # Carry explicit identifiers so the initializer does not re-parse.
+        hints = {}
+        for key in ("pdb_id", "uniprot_id"):
+            value = (decision.get(key) or "").strip()
+            if value:
+                hints[key] = value.upper()
+        reference = state.get("reference_design") or {}
+        if has_reference and intent in ("initialize", "design", "visualize") and any(
+            value != (reference.get(key) or "").upper() for key, value in hints.items()
+        ):
+            ident = reference.get("pdb_id") or reference.get("uniprot_id") or "the loaded protein"
+            return Command(goto="__end__", update={
+                "intent": "chat", "status": "", "reply_source": "coordinator:target_conflict",
+                "messages": [{"role": "assistant", "content": (
+                    f"This session is working on {ident}. Start a new session to work on a "
+                    "different protein. No new computation was started."
+                )}],
+                **({"warnings": caveats} if caveats else {}),
+            })
+
+        update: dict[str, Any] = {"intent": intent, "target_hints": hints}
         goal = (decision.get("goal") or "").strip()
         if goal:
             update["goal"] = goal
@@ -320,17 +372,7 @@ def make_coordinator(deps: Deps):
             update["goal"] = text
 
         requested = [m for m in (decision.get("mutations") or []) if isinstance(m, str)]
-        if requested:
-            update["requested_mutations"] = requested
-
-        # Carry explicit identifiers so the initializer does not re-parse.
-        hints = {}
-        for key in ("pdb_id", "uniprot_id"):
-            value = (decision.get(key) or "").strip()
-            if value:
-                hints[key] = value.upper()
-        if hints:
-            update["target_hints"] = hints
+        update["requested_mutations"] = requested
 
         if intent == "chat":
             answer = None
@@ -350,6 +392,10 @@ def make_coordinator(deps: Deps):
             else:
                 answer = describe_state(state)
                 update["reply_source"] = "coordinator:describe_state"
+            if caveats:
+                answer += "\n\n**Caveats from this run:**\n" + "\n".join(
+                    f"- {warning}" for warning in dict.fromkeys(caveats)
+                )
             update["messages"] = [{"role": "assistant", "content": answer}]
             update["status"] = ""
             if caveats:

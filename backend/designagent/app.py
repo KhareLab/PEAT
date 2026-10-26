@@ -452,6 +452,10 @@ async def chat(request: Request, body: ChatRequest) -> StreamingResponse:
     _same_origin(request, runtime)
     _own_session(runtime, user, session_id)
     turn = await runtime.turn_context(user) if user is not None else None
+    # A checkpoint proposal may be consumed by only one turn at a time.
+    if session_id in runtime.active_chats:
+        raise HTTPException(409, "a chat turn is already running for this session")
+    runtime.active_chats.add(session_id)
 
     async def stream() -> AsyncIterator[str]:
         # Task events arrive from the manager on its own schedule, and graph
@@ -590,6 +594,10 @@ async def chat(request: Request, body: ChatRequest) -> StreamingResponse:
             runtime.manager.unsubscribe(session_id, sink)
             if not runner.done():
                 runner.cancel()
+            try:
+                await asyncio.gather(runner, return_exceptions=True)
+            finally:
+                runtime.active_chats.discard(session_id)
 
     return StreamingResponse(
         stream(),

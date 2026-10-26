@@ -244,6 +244,8 @@ class DesignState(TypedDict, total=False):
     # like everything else, so a stage returns the whole dict rather than a
     # delta — see `ProtocolState` for why it has to survive the checkpoint.
     protocol: Annotated[ProtocolState, replace]
+    hpc_pending: Annotated[dict[str, Any], replace]
+    hpc_approval: Annotated[dict[str, Any], replace]
     # Raw task records passed from the orchestrator to the analyst for one
     # round. Cleared once the analyst has consumed them.
     pending_results: Annotated[dict[str, Any], replace]
@@ -302,6 +304,8 @@ def new_state(session_id: str) -> DesignState:
         status="",
         target_hints={},
         requested_mutations=[],
+        hpc_pending={},
+        hpc_approval={},
         pending_results={},
         warnings=[],
         trace=[],

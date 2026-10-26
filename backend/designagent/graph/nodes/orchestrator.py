@@ -9,14 +9,15 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from langgraph.types import Command
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ...llm import complete_json
 from ...tasks.base import TaskSpec
 from ...tasks.jobspec import batch_timeout, job_params
-from ...tasks.registry import describe
+from ...tasks.registry import CATALOG, describe
 from ...tools.esmfold import ESMATLAS_MAX_LEN, fold_job_spec
 from ...tools.proteinmpnn import mpnn_job_spec, variants_from_mpnn_fasta
 from ..deps import Deps, llm_caveat, status
@@ -41,6 +42,47 @@ GOAL_KEYWORDS = {
     "sequence_identity": ("conservative", "minimal change", "few mutations"),
     "net_charge": ("charge", "electrostatic", "ph "),
 }
+
+class PlannedMetric(BaseModel):
+    model_config = ConfigDict(strict=True)
+
+    name: str
+    direction: Literal["max", "min"] | None = None
+    target: float | None = Field(default=None, allow_inf_nan=False)
+    description: str | None = None
+
+    @model_validator(mode="after")
+    def supported_metric(self) -> PlannedMetric:
+        if self.name not in METRICS:
+            raise ValueError("unsupported metric")
+        if self.direction is not None and self.direction != METRICS[self.name][0]:
+            raise ValueError("metric direction disagrees with its scientific definition")
+        return self
+
+
+class PlannedTask(BaseModel):
+    model_config = ConfigDict(strict=True)
+
+    task: str
+    why: str | None = None
+
+    @field_validator("task")
+    @classmethod
+    def selectable_task(cls, value: str) -> str:
+        task = CATALOG.get(value)
+        if task is None or not task.planner_selectable:
+            raise ValueError("task is not available to the planner")
+        return value
+
+
+class RoundPlan(BaseModel):
+    model_config = ConfigDict(strict=True)
+
+    key_metric: PlannedMetric | None = None
+    tasks: list[PlannedTask] | None = None
+    n_variants: int = Field(default=6, ge=2, le=12)
+    notes: str | None = None
+
 
 PLAN_SYSTEM = """You plan one round of protein redesign.
 
@@ -117,6 +159,7 @@ def make_orchestrator(deps: Deps):
                 _plan_context(state, round_no, parent_sequence),
                 settings=deps.settings,
                 on_fallback=llm_caveat(deps, caveats),
+                schema=RoundPlan,
                 max_tokens=900,
             )
 
@@ -128,13 +171,13 @@ def make_orchestrator(deps: Deps):
                 key_metric = {
                     "name": name,
                     "direction": proposed.get("direction") or METRICS[name][0],
-                    "target": _number(proposed.get("target")),
+                    "target": proposed.get("target"),
                     "description": proposed.get("description") or METRICS[name][1],
                 }
         if not key_metric.get("name"):
             key_metric = choose_metric_rules(goal, state)
 
-        n_variants = _int(plan.get("n_variants") if plan else None, default=6, lo=2, hi=12)
+        n_variants = plan["n_variants"] if plan else 6
         requested = state.get("requested_mutations") or []
 
         # --- build the worklist ---
@@ -602,17 +645,3 @@ def _plan_context(state: DesignState, round_no: int, sequence: str) -> str:
         },
         default=str,
     )
-
-
-def _number(value: Any) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _int(value: Any, *, default: int, lo: int, hi: int) -> int:
-    try:
-        return max(lo, min(hi, int(value)))
-    except (TypeError, ValueError):
-        return default

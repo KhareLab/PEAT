@@ -93,6 +93,7 @@ class Runtime:
     orbit_registry: Any = None    # OrbitRegistry
     _stack: AsyncExitStack | None = field(default=None, repr=False)
     _notes: list[str] = field(default_factory=list)
+    active_chats: set[str] = field(default_factory=set, repr=False)
 
     @property
     def notes(self) -> list[str]:

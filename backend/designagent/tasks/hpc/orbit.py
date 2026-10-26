@@ -231,6 +231,7 @@ class OrbitInterface(RemoteWorkflowInterface):
                 self._endpoint_hint,
                 candidates,
             )
+            return ""
         return candidates[0] if candidates else ""
 
     async def close(self) -> None:
@@ -344,7 +345,7 @@ class OrbitInterface(RemoteWorkflowInterface):
 
     def _apply_task_status(self, data: dict) -> None:
         handle = self._handles.get(str(data.get("uid", "")))
-        if handle is None:
+        if handle is None or handle.future.done():
             return
         state = normalize_state(data.get("state"))
         if not state.terminal:
@@ -370,7 +371,7 @@ class OrbitInterface(RemoteWorkflowInterface):
 
     def _apply_job_status(self, data: dict) -> None:
         handle = self._handles.get(str(data.get("job_id", "")))
-        if handle is None:
+        if handle is None or handle.future.done():
             return
         state = normalize_state(data.get("state"))
         if not state.terminal:
@@ -565,6 +566,8 @@ class OrbitInterface(RemoteWorkflowInterface):
                 except Exception as exc:
                     log.debug("poll task %s: %s", handle.id, exc)
                     continue
+                if handle.future.done():
+                    return
                 state = normalize_state(info.get("state"))
                 if state.terminal:
                     self._finish_task(handle, info, state)
@@ -589,6 +592,8 @@ class OrbitInterface(RemoteWorkflowInterface):
                 except Exception as exc:
                     log.debug("poll job %s: %s", handle.id, exc)
                     continue
+                if handle.future.done():
+                    return
                 chunk = info.get("stdout") or ""
                 if chunk:
                     # Advance our own cursor only. `handle.log_tail` belongs to

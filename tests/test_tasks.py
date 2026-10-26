@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from designagent.config import Settings
 from designagent.lake.store import DesignHistory
 from designagent.tasks.base import TaskSpec, TaskState, normalize_state
 from designagent.tasks.hpc.globus import GlobusComputeInterface
-from designagent.tasks.hpc.orbit import to_psij_spec
+from designagent.tasks.hpc.orbit import OrbitInterface, to_psij_spec
 from designagent.tasks.local import LocalTaskInterface, QueryTaskInterface
 from designagent.tasks.manager import TaskManager
 from designagent.tasks.registry import CATALOG
@@ -308,6 +309,90 @@ def test_to_psij_spec_forwards_a_working_directory():
     assert "directory" not in to_psij_spec({"executable": "/bin/true"})
 
 
+# --- Orbit identity and lifecycle (offline) -------------------------------
+
+
+@pytest.mark.parametrize(
+    "hint,expected",
+    [("amarel", "amarel-1"), ("missing", ""), ("", "other-cluster")],
+)
+def test_orbit_never_uses_an_unmatched_endpoint(hint, expected):
+    topology = {
+        "broker": {"role": "broker", "plugins": {"psij": {}}},
+        "other-cluster": {"role": "endpoint", "plugins": {"psij": {}}},
+        "amarel-1": {"role": "endpoint", "plugins": {"psij": {}}},
+    }
+    assert OrbitInterface(endpoint=hint)._pick_endpoint(topology) == expected
+
+
+@pytest.mark.parametrize("terminal", [TaskState.DONE, TaskState.FAILED, TaskState.CANCELED])
+@pytest.mark.parametrize("later", [TaskState.RUNNING, TaskState.DONE, TaskState.FAILED])
+async def test_remote_settlement_keeps_the_first_terminal_outcome(terminal, later):
+    iface = OrbitInterface()
+    future = asyncio.get_running_loop().create_future()
+    handle = iface._handle(TaskSpec(name="proteinmpnn"), future)
+    error = "" if terminal is TaskState.DONE else "original"
+    iface._settle(handle, terminal, {"sequence": "MKV"}, error)
+    first_snapshot = handle.snapshot()
+    finished_at = handle.finished_at
+
+    iface._settle(handle, later, {"sequence": "WRONG"}, "late error")
+
+    assert handle.snapshot() == first_snapshot
+    assert handle.finished_at == finished_at
+    if terminal is TaskState.DONE:
+        assert await future == {"sequence": "MKV"}
+    elif terminal is TaskState.FAILED:
+        with pytest.raises(RuntimeError, match="original"):
+            await future
+    else:
+        assert future.cancelled()
+
+
+@pytest.mark.parametrize("plugin,id_key", [("task", "uid"), ("job", "job_id")])
+@pytest.mark.parametrize("later", ["RUNNING", "DONE", "FAILED"])
+async def test_orbit_late_events_cannot_reopen_a_completed_handle(plugin, id_key, later):
+    iface = OrbitInterface()
+    future = asyncio.get_running_loop().create_future()
+    handle = iface._track(iface._handle(TaskSpec(name="proteinmpnn"), future, task_id="one"))
+    iface._settle(handle, TaskState.DONE, {"sequence": "MKV"})
+
+    getattr(iface, f"_apply_{plugin}_status")({id_key: "one", "state": later})
+    await asyncio.sleep(0)
+
+    assert handle.state is TaskState.DONE
+    assert handle.error == ""
+    assert await future == {"sequence": "MKV"}
+
+
+@pytest.mark.parametrize("plugin", ["task", "job"])
+async def test_orbit_poll_response_cannot_reopen_a_handle_finished_while_reading(
+    monkeypatch, plugin
+):
+    iface = OrbitInterface(poll_interval=0)
+    future = asyncio.get_running_loop().create_future()
+    handle = iface._handle(TaskSpec(name="proteinmpnn"), future)
+
+    class Client:
+        def get_task(self, task_id):
+            return None
+
+        def get_job_status(self, job_id, stdout_offset, stderr_offset):
+            return None
+
+    iface._rhapsody = iface._psij = Client()
+
+    async def reply_after_completion(*args):
+        iface._settle(handle, TaskState.DONE, {"sequence": "MKV"})
+        return {"state": "RUNNING"}
+
+    monkeypatch.setattr("designagent.tasks.hpc.orbit.asyncio.to_thread", reply_after_completion)
+    await getattr(iface, f"_poll_{plugin}")(handle)
+
+    assert handle.state is TaskState.DONE
+    assert await future == {"sequence": "MKV"}
+
+
 # --- Globus adapter (offline, injected executor) --------------------------
 
 
@@ -318,7 +403,9 @@ async def test_globus_interface_runs_with_injected_executor():
     spec = TaskSpec(
         name="fold_sequence_hpc",
         kind="job",
-        params={"job_spec": {"executable": "/bin/echo", "arguments": ["hello"]}},
+        params={
+            "job_spec": {"executable": sys.executable, "arguments": ["-c", "print('hello')"]}
+        },
     )
     handle = await iface.submit(spec)
     result = await handle.future
@@ -333,7 +420,10 @@ async def test_globus_capabilities_are_honest():
     assert not iface.capabilities.supports_push_events
     await iface.connect()
     handle = await iface.submit(
-        TaskSpec(name="x", kind="job", params={"job_spec": {"executable": "/bin/true"}})
+        TaskSpec(
+            name="x", kind="job",
+            params={"job_spec": {"executable": sys.executable, "arguments": ["-c", "pass"]}},
+        )
     )
     chunk = await iface.logs(handle)
     assert chunk.text == ""
@@ -349,12 +439,16 @@ async def test_globus_argv_is_not_shell_interpreted():
         TaskSpec(
             name="x",
             kind="job",
-            params={"job_spec": {"executable": "/bin/echo", "arguments": ["a; echo pwned"]}},
+            params={
+                "job_spec": {
+                    "executable": sys.executable,
+                    "arguments": ["-c", "import sys; print(sys.argv[1])", "a; echo pwned"],
+                }
+            },
         )
     )
     result = await handle.future
-    assert "pwned" in result["stdout"]  # echoed as text ...
-    assert result["stdout"].count("\n") == 1  # ... on one line, not two commands
+    assert result["stdout"] == "a; echo pwned\n"
     await iface.close()
 
 

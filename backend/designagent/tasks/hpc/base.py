@@ -62,13 +62,13 @@ class RemoteWorkflowInterface(TaskInterface):
         error: str = "",
     ) -> None:
         """Resolve a handle's future exactly once from a status update."""
+        if handle.future.done():
+            return
         handle.state = state
         if error:
             handle.error = error
         if state.terminal:
             handle.mark_finished()
-        if handle.future.done():
-            return
         if state is TaskState.DONE:
             handle.future.set_result(result)
         elif state is TaskState.FAILED:

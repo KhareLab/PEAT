@@ -38,13 +38,13 @@ class ArtifactStore:
         if not self._index_path.exists():
             return {}
         try:
-            return json.loads(self._index_path.read_text())
+            return json.loads(self._index_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             return {}
 
     def _flush(self) -> None:
         tmp = self._index_path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(self._index, indent=2))
+        tmp.write_text(json.dumps(self._index, indent=2), encoding="utf-8", newline="\n")
         tmp.replace(self._index_path)
 
     # --- writes -------------------------------------------------------
@@ -65,11 +65,13 @@ class ArtifactStore:
         path = self._root / f"{aid}{suffix}"
 
         if isinstance(content, (dict, list)):
-            path.write_text(json.dumps(content, indent=2, default=str))
+            path.write_text(
+                json.dumps(content, indent=2, default=str), encoding="utf-8", newline="\n"
+            )
         elif isinstance(content, bytes):
             path.write_bytes(content)
         elif isinstance(content, str):
-            path.write_text(content)
+            path.write_text(content, encoding="utf-8", newline="\n")
 
         record = {
             "id": aid,

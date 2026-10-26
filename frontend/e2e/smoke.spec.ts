@@ -129,6 +129,9 @@ test("a turn renders, and says how it was made", async ({ page }) => {
 test("the settings panel opens and shows no secret", async ({ page }) => {
   const problems = guard(page);
 
+  await page.route("**/api/me", async (route) =>
+    route.fulfill({ json: { auth: false } }),
+  );
   await page.route("**/api/settings", async (route) =>
     route.fulfill({
       status: 200,

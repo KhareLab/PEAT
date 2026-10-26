@@ -330,10 +330,47 @@ def test_no_user_secret_is_persisted_by_a_turn(app_client, stub_tools, recorded_
     assert ALICE_KEY not in saved
     tasks = json.dumps(app_client.runtime.manager.snapshot(), default=str)
     assert ALICE_KEY not in tasks
+    # Flush stores and release Kuzu's exclusive Windows file lock before scanning bytes.
+    app_client.runtime.history.close()
     data_dir = app_client.runtime.settings.data_dir
     for path in data_dir.rglob("*"):
         if path.is_file() and path.name != "auth.sqlite":
             assert ALICE_KEY.encode() not in path.read_bytes(), path
+
+
+def test_authenticated_approval_to_fake_hpc_results(app_client, stub_tools, recorded_llm):
+    from tests.test_approval import FakeHpc
+
+    runtime = app_client.runtime
+    runtime.settings = runtime.settings.model_copy(update={"max_rounds": 1, "fold_backend": "hpc"})
+    runtime.deps.settings = runtime.settings
+    fake = FakeHpc()
+    runtime.manager.attach_hpc(fake)
+    root = app_client.as_user("root")
+    sid = root.post("/api/sessions").json()["session_id"]
+    proposal = root.post("/api/chat", json={"message": REDESIGN, "session_id": sid})
+    frames = _frames(proposal)
+    assert frames[-1]["type"] == "done"
+    assert any("HPC approval required" in f.get("text", "") for f in frames)
+    assert fake.submitted == []
+
+    bob = app_client.as_user("bob")
+    refused = bob.post("/api/chat", json={"message": "approve hpc", "session_id": sid})
+    assert refused.status_code == 404
+    assert fake.submitted == []
+
+    root = app_client.as_user("root")
+    result = root.post("/api/chat", json={"message": "approve hpc", "session_id": sid})
+    assert _frames(result)[-1]["type"] == "done"
+    assert fake.submitted == ["proteinmpnn", "fold_sequence", "fold_sequence"]
+    restored = root.get(f"/api/sessions/{sid}").json()["state"]
+    assert restored["ensemble"]
+    assert all(d["provenance"]["source"] == "proteinmpnn" for d in restored["ensemble"])
+    markdown = next(a for a in restored["artifacts"] if a["kind"] == "markdown")
+    rendered = root.get(markdown["url"])
+    assert rendered.status_code == 200
+    assert "proteinmpnn" in rendered.text and "hpc" in rendered.text
+    assert any(f["type"] == "state" and f["state"].get("artifacts") for f in _frames(result))
 
 
 # --- per-turn settings and interfaces -------------------------------------------

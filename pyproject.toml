@@ -27,6 +27,7 @@ dependencies = [
   "httpx",
   "pydantic>=2",
   "pydantic-settings",
+  "cryptography",
   # --- data lake / artifacts ---
   "kuzu",
   "pyarrow",

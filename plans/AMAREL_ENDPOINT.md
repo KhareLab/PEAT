@@ -114,8 +114,27 @@ startup logged only `Loading plugins: ['psij', 'sysinfo']` and one load line eac
 confirmed `role: login`. PSI/J loads on every host. That costs this path nothing: every `hpc`
 submission here is `kind="job"` (`nodes/orchestrator.py`, `nodes/protocol.py`), which goes to psij.
 
+**And the veto is absolute, not a default.** Asking for it does not lift it: `is_enabled` is a
+classmethod checked *before* instantiation (`plugin_host_base.py:166-169`), so `-p rhapsody` on a
+login node is refused the same way. The reason upstream gives is Dragon — "both can host Dragon
+workers; brokers and login nodes deliberately don't load Rhapsody"
+(`plugin_rhapsody.py:1440-1447`) — and `bin/radical-orbit-endpoint-wrapper.sh:95-109` re-encodes the
+same login-node test in shell, because "dragon's launch_selector raises in that case". psij is the
+deliberate opposite: `is_enabled` returns `True` unconditionally, commented "PsiJ loads on any host,
+including a broker embedded on a login node — batch system access matters, not the participant role"
+(`plugin_psij.py:703-707`), and pinned by a test that loads it on a broker. So the two plugins are
+asymmetric on purpose: psij is steered by `default_roles`, rhapsody is hard-walled by role.
+
+Observed on 2026-10-21: `-m remote`'s one function-task test failed here with "endpoint has no
+rhapsody plugin", which is this gate working as designed. It now skips rather than fails — backlog
+**D4**, and the reasoning is in the test's own docstring.
+
 **Why `psij,sysinfo` and not the default.** On a login node `default` is
-`psij,staging,sysinfo,queue_info`. Upstream's `plans/security_token_mitigation.md` describes psij
+`psij,staging,sysinfo,queue_info,globus` — `globus` only when `globus-sdk` imports, which it does
+not here, and the set is derived per role rather than listed anywhere: `default_plugins(role, ...)`
+selects every plugin whose class names that role in `default_roles`
+(`plugin_host_base.py:19-26`), and upstream's `tests/unittests/test_plugin_host_base.py:149-176`
+pins the result for all four roles. Upstream's `plans/security_token_mitigation.md` describes psij
 submit as arbitrary command execution and staging as able to create files under `$HOME`; both sit
 behind the token, but nothing here uses `staging`, so it need not be exposed. `sysinfo` adds the
 `host_role` route, which reports the role and batch system the endpoint actually detected.
@@ -147,6 +166,38 @@ ports need to be opened on the HPC firewall." `docs/machine_guide.md` gives the 
 PsiJ path: start the broker "somewhere reachable from the machine", then the endpoint on the login
 node. The survey confirmed the one thing this layout needs from Amarel — outbound TCP from `amarel3`
 to an arbitrary port.
+
+**Re-verified against the `c7ede0c` checkout, 2026-10-21** (the question: is a login-node endpoint
+holding no batch job the intended gateway to Slurm, or an improvisation?). It is intended, and the
+intent is encoded in the plugins rather than only asserted in prose:
+
+- `utils.py:311-356` defines four host roles — `broker`, `login`, `compute`, `standalone` — and
+  `login` is a *named* role, not an error case: scheduler on `PATH`, no allocation env var. It is
+  exactly what `amarel3` is.
+- `psij` declares `default_roles = ('login', 'standalone')` and `rhapsody` declares
+  `('compute', 'standalone')`. Upstream's own gloss: "That is why a login node gets `psij` by
+  default while a compute node gets `rhapsody`" (`docs/tutorial_plugin.md:235-250`). The division
+  of labour *is* the design — submit on the login node, execute in the allocation.
+- `DEPLOYMENT.md:140-154` names "long-running daemon processes on login nodes" as a deployment
+  mode, and its login-node launch line carries `psij` and omits `rhapsody`.
+- `docs/machine_guide.md:22-28` makes "On the machine's login node, start an endpoint" the numbered
+  happy path; compute nodes follow only as the firewalled case needing `--tunnel`.
+- `docs/rest_api.md:177-182` lists "endpoint on a login node → no SLURM job → `{"allocation": null}`"
+  **first**, as the normal state — which is the direct answer to "must a job hold the endpoint?" No.
+- `docs/plugin_federation.md:216-219` and `federation_state.py:55-62` formalise the two as named
+  join modes: `login`, where "the endpoint sits on a login node and declares what it may ask the
+  batch system for", versus `allocation`, where "the endpoint that joined **is** the pilot".
+- Upstream has *hardened* the split rather than blurred it: `plans/122-allocation-endpoint-is-the-pilot.md`
+  fixed a dispatcher that treated an allocation member like a login member, noting "the compute-node
+  default plugin set has no `psij`".
+
+Two gaps are upstream's, not ours, and worth knowing. There is a systemd unit for the **broker**
+(`DEPLOYMENT.md:116-138`) but **none for an endpoint**, despite recommending login-node daemons —
+`DEPLOYMENT.md:180-191` adds that sessions are not persisted and tells clients to wrap their loop in
+a reconnect strategy. So `tmux` plus `scripts/amarel_endpoint.sh` fills a real gap rather than
+ignoring advice, and §4's keep-alive question has no upstream answer to defer to. And nothing
+upstream discusses login-node *site policy* — process reapers, CPU limits, how many endpoints per
+node; that is Amarel's question to answer, not Orbit's.
 
 The broker holds no job state; sessions live in the endpoint. The agent sits beside the broker
 because it is the broker's only other client, the protocol's scripts are read on the agent's host
@@ -521,6 +572,7 @@ with every logged-in user (backlog **A16**), and the role is `login`, so rhapsod
 | 2 | VM | `DESIGNAGENT_ORBIT_LOCAL=true .venv/bin/python -m pytest -q -m remote` | the remote tier's assertions, rehearsed with no allocation | 2026-10-09: **8 passed** |
 | 3 | VM | `.venv/bin/python -m designagent --check-config --probe` | the agent's credentials reach the real broker and the endpoint is visible | 2026-10-09, with `/etc/repeat/backend.env` loaded: `orbit [ok] endpoint amarel3`, `hpc: configured`, exit 0. `llm` absent (no key yet); `protocol_*` cluster paths still unset |
 | 4 | VM | `.venv/bin/python -m pytest -q -m remote` | submit → poll → logs → cancel across a real scheduler. **This is the question backlog A1 asked; answering it retired the entry.** | 2026-10-09, run with `DESIGNAGENT_ORBIT_CLIENT_NAME=designagent-rung4`, since the backend holds the default name (backlog **A18**). **4 passed**: endpoint names itself; a PSI/J job runs through Slurm and returns its logs; a queued job is cancelled; the manager routes `hpc` work here. **4 failed, none of them the path itself:** rhapsody is absent on a login node (**D4**, expected); `custom_attributes` with `slurm.requeue: ""` → HTTP 500, a test bug, fixed and re-run green (**A19**); `directory` and the fetch test name paths that exist only on the VM (**A20**). **The path works** |
+| 4b | **amarel3** | the same, run *from the endpoint host* | give the two A20 tests paths the jobs can actually see, and exercise `directory` from a test rather than a hand probe | 2026-10-21, `DESIGNAGENT_ORBIT_CLIENT_NAME=designagent-amarel3-pytest`, `DESIGNAGENT_ORBIT_JOB_GPUS=0`, `--basetemp=/scratch/$USER/...`. **7 passed, 1 failed** — the failure is D4's function task, now a skip. `directory` **confirmed by test**: `landed.txt` holding `marker` persisted under `.../proj/conservation/` after the job exited, and the fetch test round-tripped a 900-byte FASTA out of a project directory. Note what this does *not* settle: A20's own defect is the silent `/tmp` fallback, untouched here, and these two tests still fail when pytest runs anywhere but the endpoint host. First run of the tier from Amarel at all, which needed `refcodes/` rebuilt from `setup.sh`'s pins |
 | 5 | VM | one real hhblits run | a 12-hour walltime, 0 GPUs, 32 GiB, and a `directory` that persists | |
 | 6 | VM | the full protocol spine | everything else | |
 
@@ -557,3 +609,43 @@ Four things to write down from rung 4, because each is the first evidence we wil
     it falls back to `/tmp`. `$PROJ` must exist before a compute stage, and a stage cannot rely on
     Slurm to notice when it does not (backlog **A20**).
 - **Output transfer time** is still unmeasured (D5): rung 4's jobs printed a few lines each.
+
+**What rung 4b added (2026-10-21), running the tier from `amarel3` itself:**
+
+- **`directory` now has a test behind it, not just a probe, and Slurm's own accounting agrees.**
+  `test_a_jobs_working_directory_is_honoured` passed against real Slurm: the job printed its `$PWD`
+  as the requested directory and `landed.txt` was still there afterwards. Independently,
+  `sacct -j <id> --format=WorkDir` reports
+  `/scratch/<netid>/peat-remote-tmp3/test_a_jobs_working_directory_0/proj/conservation` for that job
+  (`62801273`) and `/cache/home/<netid>/PEAT` — the endpoint's own cwd — for every job that set no
+  `directory`. That is the `--chdir` question answered from the scheduler's side rather than from
+  the job's stdout, and it is the check to repeat for a protocol stage.
+  `test_a_file_comes_back_out_of_a_project_directory` passed too, so `fetch_job_spec`'s
+  `outputs: ["**"]` and the client-side reader agree over a real broker — the first end-to-end
+  exercise of the protocol's fetch shape.
+- **Five Slurm jobs for six job-submitting tests, which is correct.** `sacct` lists
+  `62801247`, `62801261` (the cancelled one, never started), `62801262`, `62801273`, `62801276` —
+  and nothing for the fetch test, because a transfer spec runs on the `local` PSI/J executor, on the
+  endpoint host, with no queue slot (§2.2). So the absence in `sacct` is itself the evidence that
+  the two job modes are routed differently.
+- **No GPU was requested.** `ReqTRES` is `billing=1,cpu=1,mem=1G,node=1` on every job, with no
+  `gres`, confirming `DESIGNAGENT_ORBIT_JOB_GPUS=0` reached `sbatch` (A25). Note `mem=1G` and
+  `TimelimitRaw=10`: PSI/J rendered defaults, not the figures in `protocol/specs.py`, because these
+  specs set neither.
+- **Why it passed now, and what that does not mean.** Both tests build their paths with `tmp_path`,
+  so they need a filesystem the *job* can see. Running pytest on the endpoint host with
+  `--basetemp` on `/scratch` (shared with the compute nodes; `/tmp` is node-local) satisfies that.
+  This is a run recipe, not the fix: from the VM both still fail, and **A20's proposal of a remote
+  base directory with job-side verification stays open**. A20's primary defect — a missing
+  `--chdir` falling back to `/tmp` with exit 0 — is untouched and needs the guard line in
+  `protocol/specs.py`.
+- **A GPU is requested by default, and a CPU partition rejects it.** Three tests failed on the first
+  attempt with `sbatch: error: Requested GRES option unsupported by configured SelectType plugin`,
+  an HTTP 500 from the psij plugin. Cause is ours: `job_params` injects
+  `resources["gpus"] = orbit_job_gpus`, default **1**, and `queue=main` is CPU-only. Backlog
+  **A25**. Nothing about the endpoint or the broker was involved.
+- **Still unmeasured:** D5's transfer time. These jobs printed a few lines each, and the one
+  sizeable payload (the fetch test's 900-byte FASTA) is far too small to time.
+- **No kept submit script has been read yet** — `$RADICAL_ORBIT_PSIJ_KEEP_FILES=1` would settle what
+  `--mem`, `--chdir` and `--gres` PSI/J actually rendered, and would have named the GRES cause in
+  seconds.

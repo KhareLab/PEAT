@@ -38,16 +38,16 @@ Priority: ★ must show · ○ show if time. ~20 lines is the legible maximum at
 | S10-A | 10 | `backend/designagent/graph/nodes/coordinator.py:269–274` | 6 | VERBATIM (the slide wraps one line) | ★★ |
 | S10-B | 10 | `backend/designagent/graph/nodes/protocol.py:865–882` (`STAGES`, `ANSWERS`) | 18 | TRIMMED | ★ |
 | S13-A | 13 | `backend/designagent/tasks/base.py:22–34, 62–67, 70–83` | 20 | TRIMMED | ★ |
-| S13-B | 13 | `backend/designagent/tasks/base.py:92–120` (`TaskHandle`) | 18 | TRIMMED | ★ |
-| S13-C | 13 | `backend/designagent/tasks/base.py:148–186` (the ABC) | 20 | TRIMMED | ★★ |
+| S13-B | 13 | `backend/designagent/tasks/base.py:99–127` (`TaskHandle`) | 18 | TRIMMED | ★ |
+| S13-C | 13 | `backend/designagent/tasks/base.py:155–193` (the ABC) | 20 | TRIMMED | ★★ |
 | S13-D | 13 | `backend/designagent/tasks/manager.py:134–151` | 18 | VERBATIM | ★ |
 | S13-E | 13 | `backend/designagent/tasks/manager.py:95–113` (`interface_for`) | 19 | VERBATIM | ○ |
 | S14-A | 14 | `backend/designagent/runtime.py:270–310` | 20 | TRIMMED | ★★ |
-| S14-B | 14 | `backend/designagent/tasks/local.py:80–85` | 6 | VERBATIM | ★ |
+| S14-B | 14 | `backend/designagent/tasks/local.py:81–86` | 6 | VERBATIM | ★ |
 | S14-C | 14 | `refcodes/flowgentic/src/flowgentic/langGraph/fault_tolerance.py:73–84` | 12 | **VERBATIM — the bug** | ★★ |
 | S14-D | 14 | `refcodes/flowgentic/.../fault_tolerance.py:23–37` (the defaults) | 15 | TRIMMED | ★ |
-| S15-A | 15 | `backend/designagent/tasks/hpc/orbit.py:328–343` | 16 | VERBATIM | ★★ |
-| S15-B | 15 | `backend/designagent/tasks/hpc/orbit.py:345–369` | 20 | TRIMMED | ★★ |
+| S15-A | 15 | `backend/designagent/tasks/hpc/orbit.py:348–363` | 16 | VERBATIM | ★★ |
+| S15-B | 15 | `backend/designagent/tasks/hpc/orbit.py:365–389` | 20 | TRIMMED | ★★ |
 | S15-C | 15 | `backend/designagent/tasks/hpc/base.py:80–103` (`drain_logs`) | 20 | TRIMMED | ★ |
 | S15-D | 15 | `backend/designagent/tasks/hpc/orbit.py:400–426` (`_finish_job`) | 20 | TRIMMED | ★ |
 | S17-A | 17 | `backend/designagent/graph/nodes/analyst.py:166–195` | 20 | TRIMMED | ★★ |
@@ -222,11 +222,11 @@ the data dir for the key.
 | Finding | Evidence | Workaround |
 |---|---|---|
 | The terminal rhapsody event carries state and `exit_code` but **not `stdout`** | a completed `/bin/echo` task resolved with an empty result | `orbit.py:323–335` `_finish_task_enriched` re-fetches with `get_task` before settling the future |
-| A FAILED job reports **only a non-zero exit code** — no reason reaches the client | `handle.error` was empty for a job that exited 3 | `orbit.py:428–433` synthesises one from exit code, then stderr, then the log tail |
+| A FAILED job reports **only a non-zero exit code** — no reason reaches the client | `handle.error` was empty for a job that exited 3 | `orbit.py:448–453` synthesises one from exit code, then stderr, then the log tail |
 | The broker has **no HTTP topology route** | `/topology` → 307 → 404, `Endpoint 'topology' unknown` (it reads as a plugin name) | readiness comes from the client's own `rt.topology()`, polled in `connect()`; the local stack greps the endpoint's log for `registered as '<name>'` (`local_orbit.py:201–220`) |
 | `--no-auth` disables **only ingress auth** — the broker still refuses to start without cert and key | broker exited at startup with `--no-auth` alone | `local_orbit.py:60–83` generates a throwaway self-signed pair, SAN `IP:127.0.0.1,DNS:localhost`, key `0600` |
 | All Orbit clients are **synchronous/blocking** | `RhapsodyClient` / `PSIJClient` methods block | every call goes through `asyncio.to_thread` (23 sites in `orbit.py`) |
-| Push callbacks arrive on a **listener thread** | — | `orbit.py:328–332` `_dispatch` hops to the loop with `call_soon_threadsafe` |
+| Push callbacks arrive on a **listener thread** | — | `orbit.py:348–352` `_dispatch` hops to the loop with `call_soon_threadsafe` |
 
 Not a complaint, worth saying out loud: offset-based log tailing via `PSIJClient.get_job_status(job_id,
 stdout_offset, stderr_offset)` is the **only** streaming mechanism either backend offers, and it

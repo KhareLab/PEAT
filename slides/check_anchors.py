@@ -50,22 +50,22 @@ ANCHORS: list[tuple[str, int, str]] = [
     # S13 — the task contract
     ("backend/designagent/tasks/base.py", 22, "class TaskState"),
     ("backend/designagent/tasks/base.py", 62, "@dataclass(frozen=True)"),
-    ("backend/designagent/tasks/base.py", 92, "@dataclass"),
-    ("backend/designagent/tasks/base.py", 148, "class TaskInterface(ABC):"),
+    ("backend/designagent/tasks/base.py", 99, "@dataclass"),
+    ("backend/designagent/tasks/base.py", 155, "class TaskInterface(ABC):"),
     ("backend/designagent/tasks/manager.py", 95, "def interface_for"),
     ("backend/designagent/tasks/manager.py", 134, "name, interface = self.interface_for(spec)"),
     # S14 — the substrate
     ("backend/designagent/runtime.py", 295, "retry = RetryConfig("),
-    ("backend/designagent/tasks/local.py", 80, "async def submit"),
+    ("backend/designagent/tasks/local.py", 81, "async def submit"),
     ("refcodes/flowgentic/src/flowgentic/langGraph/fault_tolerance.py", 73,
      "# Try to include aiohttp timeouts if present"),
     ("refcodes/flowgentic/src/flowgentic/langGraph/fault_tolerance.py", 23,
      "max_attempts: int = Field("),
     # S15 — Orbit
-    ("backend/designagent/tasks/hpc/orbit.py", 328, "def _dispatch"),
-    ("backend/designagent/tasks/hpc/orbit.py", 353,
+    ("backend/designagent/tasks/hpc/orbit.py", 348, "def _dispatch"),
+    ("backend/designagent/tasks/hpc/orbit.py", 373,
      "# The terminal event carries state and exit_code but not"),
-    ("backend/designagent/tasks/hpc/orbit.py", 428,
+    ("backend/designagent/tasks/hpc/orbit.py", 448,
      "if state is TaskState.FAILED and not error:"),
     ("backend/designagent/tasks/hpc/base.py", 80, "async def drain_logs"),
     # B3 — Globus
@@ -92,7 +92,7 @@ ANCHORS: list[tuple[str, int, str]] = [
     # were untracked until an edit to app.py shifted one of them by a line, which
     # nothing caught — a citation is a citation wherever it appears on the slide.
     ("backend/designagent/app.py", 437, "def _frame"),
-    ("backend/designagent/tasks/base.py", 159, "async def submit"),
+    ("backend/designagent/tasks/base.py", 166, "async def submit"),
     ("backend/designagent/runtime.py", 466, 'notes.append(f"Using in-memory checkpoints'),
     ("refcodes/flowgentic/src/flowgentic/langGraph/fault_tolerance.py", 71, "except Exception:"),
     ("refcodes/flowgentic/src/flowgentic/langGraph/fault_tolerance.py", 75,
@@ -102,7 +102,7 @@ ANCHORS: list[tuple[str, int, str]] = [
     # anchor here, so they drifted silently when runtime.py and orbit.py grew.
     ("backend/designagent/runtime.py", 270, "async def _make_backend"),
     ("backend/designagent/runtime.py", 299, "retryable_exceptions=(ConnectionError, OSError),"),
-    ("backend/designagent/tasks/hpc/orbit.py", 345, "def _apply_task_status"),
+    ("backend/designagent/tasks/hpc/orbit.py", 365, "def _apply_task_status"),
 ]
 
 

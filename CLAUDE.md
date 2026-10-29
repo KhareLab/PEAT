@@ -107,12 +107,22 @@ the only thing that measures the LLM classifier and the LLM summary.
 Three of the `remote` tests exist for the protocol and cover plumbing no offline
 test can reach: that a job's `directory` is honoured, that `custom_attributes`
 is accepted rather than answered with an HTTP 500, and that a file stages back
-out of a project directory. All three pass against the development stack. Against
-Amarel (rung 4, 2026-10-09) `custom_attributes` passes; the other two fail only
-because they build their directories on the machine running pytest, and a real
-endpoint does not share it (backlog A20). Run them against a real endpoint with
-a `DESIGNAGENT_ORBIT_CLIENT_NAME` of their own while the backend is up, or the
-two clients steal each other's replies (A18).
+out of a project directory. All three pass against the development stack, and all
+three passed against Amarel on 2026-10-21 (rung 4b) — but only because that run
+was made **from the endpoint host** with `--basetemp` on `/scratch`. The two
+directory tests build their paths with `tmp_path`, so the job has to be able to
+see them: `/scratch` is shared with the compute nodes, `/tmp` is node-local, and
+from the VM both still fail (backlog A20). Run them with a
+`DESIGNAGENT_ORBIT_CLIENT_NAME` of their own while the backend is up, or the two
+clients steal each other's replies (A18) — and with
+`DESIGNAGENT_ORBIT_JOB_GPUS=0` on a CPU queue, or every spec built through
+`job_params` is rejected for asking for a GPU (A25).
+
+The tier's one function-task test **skips** against a login-node endpoint rather
+than failing. That is not a gap: Orbit gates rhapsody to the
+`compute` and `standalone` host roles and the veto cannot be lifted by asking for
+the plugin, while psij loads anywhere — a login-node endpoint serving psij alone
+is the gateway topology upstream intends (`plans/AMAREL_ENDPOINT.md` §2, D4).
 
 **The lint is clean and should stay that way** — `E,F,I` at line-length 100, pinned in
 `pyproject.toml` so the rule set does not drift with the ruff version. Two places not to "fix": the
@@ -475,8 +485,10 @@ reproduce.
 an acceptance ladder whose rungs are meant to be filled in with what they actually returned. The
 pair is up: the broker runs on the Linode under systemd and the `amarel3` endpoint has registered
 with `psij,sysinfo` across the internet, and rung 4 has put real Slurm jobs through it — the path
-works, which retired backlog A1. What it found is **A18–A20**, the sharpest being that a missing
-`--chdir` runs a job in `/tmp` and reports success. No protocol stage has run yet, so every
+works, which retired backlog A1. What it found is **A18–A20** and **A25**, the sharpest being that a
+missing `--chdir` runs a job in `/tmp` and reports success. Rung 4b re-ran the tier from `amarel3`
+itself on 2026-10-21 — 7 passed, 1 skipped — which put a test behind `directory` and the protocol's
+fetch shape for the first time, and confirmed **D4**. No protocol stage has run yet, so every
 walltime, core count and memory figure in `protocol/specs.py` is still a guess.
 
 `plans/PEAT_MIGRATION.md` is how this rewrite moves into `KhareLab/PEAT` — the archive-then-force-push

@@ -95,7 +95,23 @@ async def test_the_endpoint_is_real_and_names_itself(orbit, remote_settings):
 
 
 async def test_a_rhapsody_task_runs_at_the_far_end(orbit):
-    """The simplest possible remote execution: did our bytes run over there?"""
+    """The simplest possible remote execution: did our bytes run over there?
+
+    Skipped against a login-node endpoint, which is not a degraded deployment
+    but the one Orbit intends for a batch-system gateway: `psij` declares
+    `default_roles = ('login', 'standalone')` and loads anywhere, while
+    `PluginRhapsody.is_enabled` admits only the `compute` and `standalone`
+    roles -- so a login node cannot serve rhapsody even if asked, because
+    Dragon's launcher fails outside an allocation. Nothing on this path needs
+    it: every `hpc` submission the graph makes is `kind="job"`. Backlog D4,
+    confirmed against `amarel3` on 2026-10-21.
+    """
+    if not orbit.capabilities.supports_function_tasks:
+        pytest.skip(
+            f"endpoint {orbit.endpoint_name!r} serves no rhapsody plugin: a "
+            "login-node gateway cannot, by Orbit's own role gate (D4)"
+        )
+
     spec = TaskSpec(
         name="hostname",
         kind="function",
